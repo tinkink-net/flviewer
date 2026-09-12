@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>flviewer playground</title>
+  </head>
+  <body>
+    <main>
+      <h1>flviewer playground</h1>
+      <p>Pure client-side file preview: images & PDF. Double as manual QA rig.</p>
+
+      <h2>Overlay — <code>open()</code></h2>
+      <button data-demo="open-png">open PNG</button>
+      <button data-demo="open-jpg">open JPG</button>
+      <button data-demo="open-pdf">open PDF (lazy pdf.js)</button>
+      <button data-demo="open-url">open by URL</button>
+      <button data-demo="open-broken">open unsupported</button>
+
+      <h2>Embed — <code>mount()</code></h2>
+      <div id="embed-1" style="height: 360px; border: 1px dashed #555; border-radius: 8px"></div>
+      <div>
+        <button data-demo="mount-pdf">mount PDF</button>
+        <button data-demo="mount-png">mount PNG</button>
+        <button data-demo="swap">controller.update()</button>
+      </div>
+
+      <h2>Web component — <code>&lt;fl-viewer&gt;</code></h2>
+      <fl-viewer id="wc" style="display: block; width: 480px; height: 360px"></fl-viewer>
+      <div>
+        <button data-demo="wc-pdf">set source = PDF</button>
+        <button data-demo="wc-png">set source = PNG</button>
+      </div>
+
+      <script type="module" src="/main.ts"></script>
+    </main>
+  </body>
+</html>

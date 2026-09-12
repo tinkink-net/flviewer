@@ -1,0 +1,47 @@
+# CONTEXT.md — flviewer
+
+**Bounded context:** pure client-side, in-browser file preview.
+
+flviewer fetches (or receives already-held) file bytes and renders them in the browser
+with its own minimal viewer UI. No server component, no framework dependencies.
+v1 supports **images** and **PDF**; anything else resolves to a typed error.
+
+## Ubiquitous language
+
+| Term                        | Definition                                                                                                                                                                                                            |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Source**                  | The value identifying bytes to preview: http(s) URL (`string`/`URL`), `Blob`, `File`, `ArrayBuffer`, `Uint8Array`. URLs are fetched inside the viewer, honoring `requestInit`.                                        |
+| **requestInit**             | A `RequestInit` object (headers, credentials, method) applied when fetching URL sources.                                                                                                                              |
+| **Overlay**                 | Fullscreen modal preview created by `open(source)`. Locks page scroll, owns the Close control, one at a time (new `open()` replaces the current one).                                                                 |
+| **Embed**                   | Preview rendered inside a caller-provided container via `mount(el, source)`. Same Core, no Close control.                                                                                                             |
+| **Core**                    | The single shared renderer (DOM structure + toolbar + state machine) mounted by every surface. Exists exactly once; surfaces are thin adapters.                                                                       |
+| **Controller**              | Handle returned by `open()`/`mount()`: `update(source)`, `destroy()` (idempotent), `on(event, cb)`, and `close()` (Overlay only).                                                                                     |
+| **`<fl-viewer>`**           | Custom element wrapping the Core. Renders in light DOM. Attributes: `src`; complex values (e.g. `requestInit`) via properties. Same semantics as the Controller.                                                      |
+| **Detection chain**         | Format sniffing order: `Content-Type` MIME → URL/`File.name` extension → magic bytes (`%PDF-`, image signatures). Yields `image`, `pdf`, or `unsupported`.                                                            |
+| **Browser-decodable image** | v1 image support = whatever the browser's own decoder handles (PNG, JPEG, GIF, WebP, AVIF, BMP, ICO, SVG-as-static-image). SVG interactivity is out of scope.                                                         |
+| **Lazy chunk**              | The separately-emitted pdf.js bundle, downloaded via dynamic import on first PDF preview. Image previews never download it.                                                                                           |
+| **Fake worker**             | pdf.js main-thread fallback used when a real Worker can't be created (CSP, cross-origin). Logs a warning, still renders.                                                                                              |
+| **Typed error**             | `{ code, message, cause? }` surfaced through the event bus — never an exception across the API boundary. Codes: `fetch-error`, `unsupported-type`, `encrypted-pdf`, `render-error`, `aborted`.                        |
+| **Event bus**               | One event stream, two views: `controller.on(name, cb)` with short names (`ready`, `error`, `close`, `pagechange`, `zoom`), and the same events as CustomEvents named `flv:<name>` bubbled on the Core's root element. |
+| **`flv-` namespace**        | Reserved prefix for all CSS classes (`flv-toolbar`), DOM events (`flv:error`), and CSS custom properties (`--flv-accent`). Integrators must not define `flv-`/`flv:` names.                                           |
+| **Playground**              | `playground/` — vanilla demo app run with `vp dev`; doubles as manual QA rig and documentation examples.                                                                                                              |
+
+## Scope ledger (v1)
+
+**In:** toolbar (zoom in/out, fit, 100%, rotate; page prev/next + indicator — PDF only; download; fullscreen; close — Overlay only), wheel/pinch zoom, pan, double-click toggle 1×↔2×, keyboard (`Esc`, `+`/`-`, arrows, `0`), progress/spinner loading state, error state with Retry, blob-URL lifecycle managed by the Core.
+
+**Deferred (tracked, not built):** continuous PDF scroll (page-at-a-time for v1), text layer (select/copy), search, thumbnails, outline, print, open-in-new-tab, multi-image gallery, password-protected PDF input (encrypted PDFs are detected and typed-errored), `data:`/`blob:`/`Response` sources, custom `fetch` injection.
+
+## Decisions index
+
+- [ADR-1 — PDF rendering via lazy-loaded pdf.js](docs/adr/ADR-1-pdf-via-lazy-pdfjs.md)
+- [ADR-2 — Dual integration surface on one Core](docs/adr/ADR-2-dual-surface-one-core.md)
+- [ADR-3 — Light-DOM Core with namespaced CSS](docs/adr/ADR-3-light-dom-core.md)
+- [ADR-4 — Typed errors, no exceptions](docs/adr/ADR-4-typed-errors.md)
+
+## Tooling & packaging contract
+
+- `flviewer`, unscoped, MIT. ESM-only npm package.
+- Tooling: vite-plus end-to-end (`vp dev`, `vp test`, `vp check`, `vp pack --dts --publint --attw` as the release gate); dependencies via **pnpm** (`pnpm install`, `pnpm@12.4.1` pinned in `packageManager`). No npm/yarn lockfiles.
+- Minimum browser target: evergreen (required by dynamic `import()`).
+- Verification: Vitest + happy-dom unit tests (logic) + Vitest browser mode / Playwright Chromium smoke tests (real rendering, fixtures for PNG/JPEG/PDF).
