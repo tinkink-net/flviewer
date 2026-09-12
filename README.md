@@ -98,11 +98,12 @@ vp check          # format + lint + typecheck
 vp pack --dts --publint --attw   # release gate
 ```
 
-Regenerate test fixtures / the inlined pdf.js worker after dependency changes:
+Regenerate test fixtures / the inlined pdf.js worker + assets after dependency changes:
 
 ```bash
 node scripts/gen-fixtures.ts
 node scripts/gen-worker-source.ts
+node scripts/gen-pdf-assets.ts
 ```
 
 ## Browser support
