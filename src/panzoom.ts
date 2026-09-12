@@ -145,7 +145,7 @@ export class PanZoom {
     this.#mediaSize = { width, height };
   }
 
-  /** Factor that fits mediaSize into the stage (≤ 1: never upscale). */
+  /** Factor that fits mediaSize into the stage (may upscale small media to fill it). */
   fitFactor(): number {
     const rect = this.#stageRect();
     const margin = this.#opts.margin;
@@ -160,7 +160,7 @@ export class PanZoom {
     const sin = Math.abs(Math.sin(rad));
     const rotW = width * cos + height * sin;
     const rotH = width * sin + height * cos;
-    return Math.min(availW / rotW, availH / rotH, 1);
+    return Math.min(availW / rotW, availH / rotH);
   }
 
   /** Reset to fit (scale = fitFactor, centered, keeps rotation). */
@@ -168,7 +168,7 @@ export class PanZoom {
     if (this.#mediaSize.width <= 0) {
       return;
     }
-    this.#scale = Math.max(this.#opts.minScale, this.fitFactor());
+    this.#scale = Math.min(this.#opts.maxScale, Math.max(this.#opts.minScale, this.fitFactor()));
     this.#tx = 0;
     this.#ty = 0;
     this.#apply();
@@ -199,7 +199,7 @@ export class PanZoom {
     this.#apply();
   }
 
-  /** Show media at 1× (natural size for images; fit-painted size for PDF). */
+  /** Show media at 1× — 100% original zoom level (1 CSS px per natural pixel). */
   setHundred(): void {
     this.#scale = 1;
     this.#tx = 0;
