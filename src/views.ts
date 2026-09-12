@@ -28,11 +28,15 @@ export interface FlvView {
   destroy(): void;
 }
 
+/** CSS px per PDF unit (pt): 72 dpi PDF geometry at the 96 dpi CSS base. */
+const CSS_PER_PT = 96 / 72;
+
 function stageFit(
   viewportW: number,
   viewportH: number,
   stage: HTMLElement,
   margin: number,
+  rotation = 0,
 ): number {
   const rect = stage.getBoundingClientRect();
   const availW = rect.width - margin * 2;
@@ -40,8 +44,13 @@ function stageFit(
   if (availW <= 0 || availH <= 0) {
     return 1;
   }
+  const rad = (rotation * Math.PI) / 180;
+  const cos = Math.abs(Math.cos(rad));
+  const sin = Math.abs(Math.sin(rad));
+  const rotW = viewportW * cos + viewportH * sin;
+  const rotH = viewportW * sin + viewportH * cos;
   // PDF pages may be upscaled to fit — no natural-size cap here.
-  return Math.min(availW / viewportW, availH / viewportH);
+  return Math.min(availW / rotW, availH / rotH);
 }
 
 const RENDER_MARGIN = 24;
@@ -151,6 +160,13 @@ export async function createPdfView(
   let currentTask: { cancel(): void; promise: Promise<void> } | null = null;
   let page = 1;
   let userRotation = 0;
+  /**
+   * Base-dimension mode. The canvas is always painted at the mode's base CSS
+   * size and shown at panzoom scale 1, so "100%" (scale 1) is true actual
+   * size — CSS px at 96 DPI (1 pt = 96/72 px) — independent of the container,
+   * while "fit" re-paints the page at the size that fills the stage.
+   */
+  let renderMode: "fit" | "hundred" = "fit";
   let resizeTimer: ReturnType<typeof setTimeout> | null = null;
   let resizeObserver: ResizeObserver | null = null;
   let firstRendered = false;
@@ -189,9 +205,14 @@ export async function createPdfView(
     cancelCurrent();
     const base = pdfPage.getViewport({ scale: 1 });
     const rotation = (pdfPage.rotate + userRotation) % 360;
-    const fit = stageFit(base.width, base.height, stage, RENDER_MARGIN);
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const viewport = pdfPage.getViewport({ scale: fit * dpr, rotation });
+    // Paint at the mode's base size: fit fills the stage; hundred is the
+    // page's 96-DPI CSS size regardless of the stage.
+    const baseScale =
+      renderMode === "hundred"
+        ? CSS_PER_PT
+        : stageFit(base.width, base.height, stage, RENDER_MARGIN, rotation);
+    const viewport = pdfPage.getViewport({ scale: baseScale * dpr, rotation });
     canvas.width = Math.floor(viewport.width);
     canvas.height = Math.floor(viewport.height);
     const cssW = viewport.width / dpr;
@@ -199,7 +220,7 @@ export async function createPdfView(
     canvas.style.width = `${cssW}px`;
     canvas.style.height = `${cssH}px`;
     panzoom.setMediaSize(cssW, cssH);
-    panzoom.fit();
+    panzoom.setHundred();
     const context = canvas.getContext("2d");
     if (!context) {
       throw createFlvError("render-error", "Canvas 2D is unavailable.");
@@ -248,8 +269,14 @@ export async function createPdfView(
     },
     pageCount: doc.numPages,
     zoomBy: (factor: number) => panzoom.zoomBy(factor),
-    fit: () => panzoom.fit(),
-    hundred: () => panzoom.setHundred(),
+    fit: () => {
+      renderMode = "fit";
+      scheduleRender();
+    },
+    hundred: () => {
+      renderMode = "hundred";
+      scheduleRender();
+    },
     rotate: () => {
       userRotation = (userRotation + 90) % 360;
       scheduleRender();

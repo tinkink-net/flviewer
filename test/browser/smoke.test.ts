@@ -140,6 +140,37 @@ describe("browser rendering", () => {
     container.remove();
   });
 
+  it("fit and actual-size render distinct base sizes (container-independent 1:1)", async () => {
+    const container = document.createElement("div");
+    container.style.cssText = "width:400px;height:500px";
+    document.body.append(container);
+    const controller = mount(container, pdfBlob());
+    await new Promise((resolve) => controller.on("ready", resolve as never));
+    const canvas = await waitUntil(() =>
+      container.querySelector<HTMLCanvasElement>("canvas.flv-canvas"),
+    );
+    // 200x200 pt page in a 400x500 stage: fit = min(352/200, 452/200) = 1.76.
+    await vi.waitFor(() => {
+      expect(canvas.style.width).toBe("352px");
+    });
+
+    // 100% = base dimension (96 DPI CSS): 200 pt * 96/72 = 266.67 px,
+    // independent of the container size.
+    (container.querySelector('button[aria-label="Actual size"]') as HTMLButtonElement).click();
+    await vi.waitFor(() => {
+      expect(Number.parseFloat(canvas.style.width)).toBeCloseTo(200 * (96 / 72), 1);
+    });
+    expect(canvas.getBoundingClientRect().width).toBeCloseTo(200 * (96 / 72), 0);
+
+    // Back to fit re-paints at the stage size.
+    (container.querySelector('button[aria-label="Fit"]') as HTMLButtonElement).click();
+    await vi.waitFor(() => {
+      expect(canvas.style.width).toBe("352px");
+    });
+    controller.destroy();
+    container.remove();
+  });
+
   it("centers media in the stage (PDF and image)", async () => {
     for (const blob of [pdfBlob(), pngBlob()]) {
       const container = document.createElement("div");
