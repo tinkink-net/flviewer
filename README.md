@@ -4,7 +4,7 @@ Pure client-side file preview for the browser. Images & PDF, with a minimal buil
 
 - **Zero framework dependencies** — vanilla factory API plus a `<fl-viewer>` web component
 - **Overlay & Embed** — fullscreen modal via `open()`, or render inside any container via `mount()`
-- **Lazy pdf.js** — image previews never download the ~350 KB PDF engine; it loads on first PDF preview
+- **Lazy pdf.js** — image previews never download the PDF engine; on first PDF preview the viewer loads a ~157 KB gz engine chunk plus a ~357 KB gz worker chunk. No consumer configuration required, works in bundled apps, CDN-direct and raw-ESM contexts
 - **Typed errors** — failures resolve to `{ code, message, cause? }` events, never exceptions
 
 ## Install

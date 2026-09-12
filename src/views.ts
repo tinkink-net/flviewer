@@ -1,4 +1,4 @@
-import { createFlvError } from "./errors";
+import { createFlvError, isPasswordException } from "./errors";
 import { PanZoom } from "./panzoom";
 import { createBlobWorker } from "./pdf-worker";
 import type { LoadedSource } from "./source";
@@ -160,11 +160,7 @@ export async function createPdfView(
   try {
     doc = await pdfjs.getDocument({ data }).promise;
   } catch (err) {
-    if (
-      typeof err === "object" &&
-      err !== null &&
-      (err as { name?: string }).name === "PasswordException"
-    ) {
+    if (isPasswordException(err)) {
       throw createFlvError("encrypted-pdf");
     }
     throw createFlvError("render-error", "The PDF could not be opened.", err);

@@ -44,6 +44,7 @@
     "@vitest/browser": "^4.1.11",
     "@vitest/browser-playwright": "^4.1.11",
     "happy-dom": "^18.0.1",
+    "knip": "^6.35.1",
     "playwright": "^1.55.0",
     "publint": "^0.3.24",
     "typescript": "^6.0.3",

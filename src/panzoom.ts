@@ -8,13 +8,6 @@ export interface PanZoomOptions {
   onZoom?: (scale: number) => void;
 }
 
-export interface Transform {
-  scale: number;
-  tx: number;
-  ty: number;
-  rotation: number;
-}
-
 /**
  * Shared transform engine for a media element (image or canvas) inside a stage.
  * Transform order: translate(tx, ty) rotate(r) scale(s), applied about the center.

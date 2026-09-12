@@ -1,0 +1,5 @@
+{
+  "entry": ["src/index.ts"],
+  "project": ["src/**/*.ts", "playground/**/*.ts"],
+  "ignoreDependencies": ["@arethetypeswrong/cli", "publint", "@vitest/browser"]
+}

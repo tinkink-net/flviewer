@@ -1,6 +1,6 @@
 import { TINY_JPG_B64, TINY_PNG_B64, TWO_PAGE_PDF_B64 } from "./fixtures/files";
 
-export function bytesOf(b64: string) {
+function bytesOf(b64: string) {
   return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 }
 
