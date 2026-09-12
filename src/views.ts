@@ -1,5 +1,6 @@
 import { createFlvError, isPasswordException } from "./errors";
 import { PanZoom } from "./panzoom";
+import { PdfBinaryDataFactory } from "./pdf-assets";
 import { createBlobWorker } from "./pdf-worker";
 import type { LoadedSource } from "./source";
 import type { FlvError } from "./types";
@@ -158,7 +159,15 @@ export async function createPdfView(
   const data = new Uint8Array(await loaded.blob.arrayBuffer());
 
   try {
-    doc = await pdfjs.getDocument({ data }).promise;
+    doc = await pdfjs.getDocument({
+      data,
+      // Fetch CMaps / standard fonts / wasm from the main thread; the custom
+      // factory below serves them from the inlined archive, so CJK-encoded
+      // PDFs render with zero consumer configuration (see ADR-1).
+      useWorkerFetch: false,
+      cMapPacked: true,
+      BinaryDataFactory: PdfBinaryDataFactory,
+    }).promise;
   } catch (err) {
     if (isPasswordException(err)) {
       throw createFlvError("encrypted-pdf");
