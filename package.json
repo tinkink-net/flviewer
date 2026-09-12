@@ -1,6 +1,6 @@
 {
   "name": "flviewer",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Pure client-side file preview for the browser: images & PDF with built-in minimal UI.",
   "keywords": [
     "file-preview",
