@@ -375,3 +375,132 @@ describe("browser media rendering (Phase 1)", () => {
     container.remove();
   });
 });
+
+describe("interaction modes (select/hand)", () => {
+  function drag(stage: Element, from: [number, number], to: [number, number]): void {
+    const opts = { pointerId: 1, pointerType: "mouse", button: 0, bubbles: true };
+    stage.dispatchEvent(
+      new PointerEvent("pointerdown", { ...opts, clientX: from[0], clientY: from[1] }),
+    );
+    stage.dispatchEvent(
+      new PointerEvent("pointermove", { ...opts, clientX: to[0], clientY: to[1] }),
+    );
+    stage.dispatchEvent(new PointerEvent("pointerup", { ...opts, clientX: to[0], clientY: to[1] }));
+  }
+
+  it("cannot drag media that fits the stage, pans when zoomed past it", async () => {
+    const container = document.createElement("div");
+    container.style.cssText = "width:400px;height:300px";
+    document.body.append(container);
+    const controller = mount(container, jpgBlob());
+    await new Promise((resolve) => controller.on("ready", resolve as never));
+    const stage = await waitUntil(() => container.querySelector(".flv-stage"));
+    const img = await waitUntil(() => container.querySelector<HTMLImageElement>("img.flv-img"));
+    await waitUntil(() => (img.complete ? true : null));
+    const stageRect = stage.getBoundingClientRect();
+    const from: [number, number] = [
+      stageRect.left + stageRect.width / 2,
+      stageRect.top + stageRect.height / 2,
+    ];
+    // 64px image fit-upscaled to 252px still fits the 400x300 stage — immovable.
+    await vi.waitFor(() => {
+      expect(img.style.transform).toContain("scale");
+    });
+    drag(stage, from, [from[0] - 150, from[1] - 120]);
+    expect(img.style.transform).toContain("translate(0px, 0px)");
+
+    // Zoom to max (8x → 512px): hand mode pans, clamped at the edges
+    // (±56px horizontally, ±106px vertically for this drag).
+    for (let i = 0; i < 4; i++) {
+      (container.querySelector('button[aria-label="Zoom in"]') as HTMLButtonElement).click();
+    }
+    await vi.waitFor(() => {
+      expect(img.style.transform).toContain("scale(8)");
+    });
+    drag(stage, from, [from[0] - 180, from[1] - 140]);
+    await vi.waitFor(() => {
+      expect(img.style.transform).toContain("translate(-56px, -106px)");
+    });
+    controller.destroy();
+    container.remove();
+  });
+
+  it("select mode freezes panning, hand mode resumes it", async () => {
+    const container = document.createElement("div");
+    container.style.cssText = "width:400px;height:300px";
+    document.body.append(container);
+    const controller = mount(container, jpgBlob());
+    await new Promise((resolve) => controller.on("ready", resolve as never));
+    const stage = await waitUntil(() => container.querySelector(".flv-stage"));
+    const img = await waitUntil(() => container.querySelector<HTMLImageElement>("img.flv-img"));
+    await waitUntil(() => (img.complete ? true : null));
+    const stageRect = stage.getBoundingClientRect();
+    const center: [number, number] = [
+      stageRect.left + stageRect.width / 2,
+      stageRect.top + stageRect.height / 2,
+    ];
+    for (let i = 0; i < 4; i++) {
+      (container.querySelector('button[aria-label="Zoom in"]') as HTMLButtonElement).click();
+    }
+    await vi.waitFor(() => {
+      expect(img.style.transform).toContain("scale(8)");
+    });
+    // Hand mode (default): drag to a panned, clamped position.
+    drag(stage, center, [center[0] - 180, center[1] - 140]);
+    await vi.waitFor(() => {
+      expect(img.style.transform).toContain("translate(-56px, -106px)");
+    });
+
+    (container.querySelector('button[aria-label="Select mode"]') as HTMLButtonElement).click();
+    expect(stage.classList.contains("flv-mode-select")).toBe(true);
+    const frozen = img.style.transform;
+    drag(stage, center, [center[0] + 180, center[1] + 140]);
+    expect(img.style.transform).toBe(frozen);
+
+    (container.querySelector('button[aria-label="Hand mode"]') as HTMLButtonElement).click();
+    drag(stage, center, [center[0] + 180, center[1] + 140]);
+    expect(img.style.transform).not.toBe(frozen);
+    controller.destroy();
+    container.remove();
+  });
+
+  it("keeps zoom across PDF page changes and re-centers pan", async () => {
+    const container = document.createElement("div");
+    container.style.cssText = "width:400px;height:500px";
+    document.body.append(container);
+    const controller = mount(container, pdfBlob());
+    await new Promise((resolve) => controller.on("ready", resolve as never));
+    const canvas = await waitUntil(() =>
+      container.querySelector<HTMLCanvasElement>("canvas.flv-canvas"),
+    );
+    // 200x200 pt page painted at the fit base (352px), panzoom scale 1.
+    await vi.waitFor(() => {
+      expect(canvas.style.width).toBe("352px");
+    });
+    for (let i = 0; i < 3; i++) {
+      (container.querySelector('button[aria-label="Zoom in"]') as HTMLButtonElement).click();
+    }
+    // 1.25^3 = 1.953 — arbitrary zoom now survives paging.
+    await vi.waitFor(() => {
+      expect(canvas.style.transform).toContain("scale(1.95");
+    });
+
+    const pagechange = new Promise<{ page: number }>((resolve) =>
+      controller.on("pagechange", resolve as never),
+    );
+    (container.querySelector('button[aria-label="Next page"]') as HTMLButtonElement).click();
+    await pagechange;
+    await vi.waitFor(() => {
+      expect(canvas.style.transform).toContain("scale(1.95");
+      expect(canvas.style.transform).toContain("translate(0px, 0px)");
+    });
+    // "Fit" still repaints the fit base and resets the transform to 1×.
+    (container.querySelector('button[aria-label="Fit"]') as HTMLButtonElement).click();
+    await vi.waitFor(() => {
+      expect(canvas.style.transform).toContain("scale(1)");
+      expect(canvas.style.width).toBe("352px");
+    });
+    controller.destroy();
+    container.remove();
+  }, 20000);
+});

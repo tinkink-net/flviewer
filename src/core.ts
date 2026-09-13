@@ -24,6 +24,16 @@ interface ButtonSpec {
 
 const BUTTONS: ButtonSpec[] = [
   {
+    icon: "select",
+    label: "Select mode",
+    action: (c) => c.setMode("select"),
+  },
+  {
+    icon: "hand",
+    label: "Hand mode",
+    action: (c) => c.setMode("hand"),
+  },
+  {
     icon: "zoomIn",
     label: "Zoom in",
     action: (c) => c.view?.zoomBy(1.25),
@@ -120,6 +130,7 @@ export class Core {
   #volume: HTMLInputElement;
   #mediaEl: HTMLMediaElement | null = null;
   #scrubbing = false;
+  #mode: "hand" | "select" = "hand";
   #view: FlvView | null = null;
   #loaded: LoadedSource | null = null;
   #lastSource: { source: Source; options?: SourceOptions } | null = null;
@@ -181,6 +192,18 @@ export class Core {
             this.#toggleMuted();
           }
           return;
+        case "h":
+        case "H":
+          if (!ev.repeat) {
+            this.setMode("hand");
+          }
+          return;
+        case "v":
+        case "V":
+          if (!ev.repeat) {
+            this.setMode("select");
+          }
+          return;
       }
       // +, -, 0 and page arrows are intentionally inert for media.
       return;
@@ -205,6 +228,14 @@ export class Core {
         break;
       case "ArrowRight":
         this.#view?.nextPage();
+        break;
+      case "h":
+      case "H":
+        this.setMode("hand");
+        break;
+      case "v":
+      case "V":
+        this.setMode("select");
         break;
     }
   };
@@ -343,6 +374,9 @@ export class Core {
       btn.dataset.flvPermanent = String(Boolean(spec.permanent));
       btn.innerHTML = ICONS[spec.icon];
       btn.addEventListener("click", () => spec.action(this));
+      if (spec.label === "Select mode" || spec.label === "Hand mode") {
+        btn.setAttribute("aria-pressed", "false");
+      }
       if (spec.icon === "prev" || spec.icon === "next") {
         btn.dataset.flvPager = "true";
       }
@@ -356,6 +390,7 @@ export class Core {
     }
 
     this.#updateToolbarForKind(null);
+    this.#syncModeButtons();
     this.root.append(stage, progress, spinner, errorBox, toolbar);
     this.root.addEventListener("keydown", this.#keydown);
     document.addEventListener("fullscreenchange", this.#fullscreenChange);
@@ -445,6 +480,7 @@ export class Core {
 
     const callbacks: ViewCallbacks = {
       wheelMode: this.#options.isOverlay ? "always" : "ctrl",
+      mode: this.#mode,
       onZoom: (scale) => this.emit("zoom", { scale }),
       onError: (err) => this.#fail(seq, err),
       onPageChange: (page, total) => {
@@ -578,7 +614,7 @@ export class Core {
     }
   }
 
-  /** Kind-aware toolbar: transform group, media group, pager group. */
+  /** Kind-aware toolbar: mode group, transform group, media group, pager group. */
   #updateToolbarForKind(kind: FlvKind | null): void {
     const showBtn = (label: string, visible: boolean) => {
       const btn = this.#button(label);
@@ -589,6 +625,9 @@ export class Core {
     const isDoc = kind === "image" || kind === "pdf";
     const isVideo = kind === "video";
     const isMedia = isVideo || kind === "audio";
+    const hasPanZoom = isDoc || isVideo;
+    showBtn("Select mode", hasPanZoom);
+    showBtn("Hand mode", hasPanZoom);
     showBtn("Zoom in", isDoc);
     showBtn("Zoom out", isDoc);
     showBtn("Fit", isDoc || isVideo);
@@ -596,7 +635,19 @@ export class Core {
     showBtn("Rotate", isDoc);
     this.#mediaGroup.hidden = !isMedia;
     this.#sepMedia.hidden = !isVideo;
-    this.#sepTransform.hidden = !(isDoc || isVideo);
+    this.#sepTransform.hidden = !hasPanZoom;
+  }
+
+  /** Switch the interaction mode (hand pans clamped; select pans nothing). */
+  setMode(mode: "hand" | "select"): void {
+    this.#mode = mode;
+    this.#syncModeButtons();
+    this.#view?.setMode(mode);
+  }
+
+  #syncModeButtons(): void {
+    this.#button("Select mode")?.setAttribute("aria-pressed", String(this.#mode === "select"));
+    this.#button("Hand mode")?.setAttribute("aria-pressed", String(this.#mode === "hand"));
   }
 
   #connectMedia = (el: HTMLMediaElement): void => {

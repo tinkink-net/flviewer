@@ -108,3 +108,90 @@ describe("setHundred", () => {
     expect(pz2.media.style.transform).toContain("scale(1)");
   });
 });
+
+describe("setScale", () => {
+  it("applies an absolute scale, re-centered", () => {
+    const pz2 = makePanZoom();
+    pz2.setMediaSize(100, 80);
+    pz2.setScale(2.5);
+    expect(pz2.totalScale).toBe(2.5);
+    expect(pz2.media.style.transform).toContain("translate(0px, 0px)");
+    expect(pz2.media.style.transform).toContain("scale(2.5)");
+  });
+});
+
+/**
+ * Pointer drag helpers. happy-dom has PointerEvent but no
+ * setPointerCapture, so the stage gets a no-op stub.
+ */
+function drag(stage: HTMLElement, from: [number, number], to: [number, number]): void {
+  (stage as unknown as { setPointerCapture: () => void }).setPointerCapture = () => {};
+  const opts = { pointerId: 1, pointerType: "mouse", button: 0, bubbles: true };
+  stage.dispatchEvent(
+    new PointerEvent("pointerdown", { ...opts, clientX: from[0], clientY: from[1] }),
+  );
+  stage.dispatchEvent(new PointerEvent("pointermove", { ...opts, clientX: to[0], clientY: to[1] }));
+  stage.dispatchEvent(new PointerEvent("pointerup", { ...opts, clientX: to[0], clientY: to[1] }));
+}
+
+describe("clamped panning", () => {
+  it("cannot move media that fits the stage", () => {
+    const stage = document.createElement("div");
+    const media = document.createElement("div");
+    stage.append(media);
+    const pz2 = new PanZoom(stage, media);
+    pz2.setMediaSize(100, 80);
+    pz2.setScale(2); // 200x160 inside 600x400 — nothing to reveal.
+    drag(stage, [300, 200], [150, 80]);
+    expect(media.style.transform).toContain("translate(0px, 0px)");
+  });
+
+  it("clamps overflowing media to its edges (no void around it)", () => {
+    const stage = document.createElement("div");
+    const media = document.createElement("div");
+    stage.append(media);
+    const pz2 = new PanZoom(stage, media);
+    pz2.setMediaSize(1000, 800);
+    pz2.setScale(1); // 1000x800 overflows 600x400 → max pan ±200/±200.
+    drag(stage, [300, 200], [-200, -300]);
+    expect(media.style.transform).toContain("translate(-200px, -200px)");
+  });
+
+  it("select mode never pans", () => {
+    const stage = document.createElement("div");
+    const media = document.createElement("div");
+    stage.append(media);
+    const pz2 = new PanZoom(stage, media, { mode: "select" });
+    expect(pz2.mode).toBe("select");
+    pz2.setMediaSize(1000, 800);
+    pz2.setScale(1);
+    drag(stage, [300, 200], [100, 100]);
+    expect(media.style.transform).toContain("translate(0px, 0px)");
+  });
+
+  it("setMode switches classes and re-enables panning", () => {
+    const stage = document.createElement("div");
+    const media = document.createElement("div");
+    stage.append(media);
+    const pz2 = new PanZoom(stage, media, { mode: "select" });
+    expect(stage.classList.contains("flv-mode-select")).toBe(true);
+    pz2.setMode("hand");
+    expect(stage.classList.contains("flv-mode-hand")).toBe(true);
+    expect(stage.classList.contains("flv-mode-select")).toBe(false);
+    pz2.setMediaSize(1000, 800);
+    pz2.setScale(1);
+    drag(stage, [300, 200], [100, 100]);
+    // Delta (-200, -100): x clamps at the edge, y is within bounds.
+    expect(media.style.transform).toContain("translate(-200px, -100px)");
+  });
+
+  it("wheel zoom still works in select mode (zoom is mode-independent)", () => {
+    const stage = document.createElement("div");
+    const media = document.createElement("div");
+    stage.append(media);
+    const pz2 = new PanZoom(stage, media, { mode: "select" });
+    pz2.setMediaSize(100, 80);
+    stage.dispatchEvent(new WheelEvent("wheel", { deltaY: -240, clientX: 300, clientY: 200 }));
+    expect(pz2.totalScale).toBeGreaterThan(1);
+  });
+});

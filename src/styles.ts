@@ -48,9 +48,12 @@ body.flv-lock {
   inset: 0;
   overflow: hidden;
   touch-action: none;
+}
+/* Interaction modes: hand drags (clamped), select never pans. */
+.flv-stage.flv-mode-hand {
   cursor: grab;
 }
-.flv-stage.flv-panning {
+.flv-stage.flv-mode-hand.flv-panning {
   cursor: grabbing;
 }
 .flv-media {

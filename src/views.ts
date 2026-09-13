@@ -1,6 +1,7 @@
 import { createFlvError, isPasswordException } from "./errors";
 import { ICONS } from "./icons";
 import { PanZoom } from "./panzoom";
+import type { PanZoomMode } from "./panzoom";
 import { PdfBinaryDataFactory } from "./pdf-assets";
 import { createBlobWorker } from "./pdf-worker";
 import type { LoadedSource } from "./source";
@@ -13,6 +14,8 @@ export interface MediaControlsHost {
 
 export interface ViewCallbacks {
   wheelMode: "always" | "ctrl";
+  /** Initial interaction mode (hand pans clamped; select pans nothing). */
+  mode: PanZoomMode;
   onZoom: (scale: number) => void;
   onError: (error: FlvError) => void;
   /** Fired when the visible PDF page changes (1-based). */
@@ -35,6 +38,8 @@ export interface FlvView {
   rotate(): void;
   nextPage(): void;
   prevPage(): void;
+  /** Switch the interaction mode (select/hand). */
+  setMode(mode: PanZoomMode): void;
   destroy(): void;
 }
 
@@ -84,6 +89,7 @@ export function createImageView(
 
   const panzoom = new PanZoom(stage, img, {
     wheelMode: cb.wheelMode,
+    mode: cb.mode,
     onZoom: cb.onZoom,
   });
 
@@ -115,6 +121,7 @@ export function createImageView(
     rotate: () => panzoom.rotate90(),
     nextPage: () => {},
     prevPage: () => {},
+    setMode: (mode) => panzoom.setMode(mode),
     destroy: () => {
       panzoom.destroy();
       img.remove();
@@ -177,15 +184,17 @@ export function createMediaView(
     el.src = loaded.url;
   }
 
-  // Video transforms: two-level zoom (fit / 100%) applied programmatically —
-  // no wheel/pinch/drag, so nothing user-facing scales the element (the
-  // native-controls blow-up bug class). Pan for oversized 100% arrives with
-  // the interaction-modes pass.
+  // Video transforms: two-level zoom only (fit / 100%). No wheel or pinch
+  // (no arbitrary zoom), but hand-mode drag pan works when the media
+  // overflows; double-click stays fullscreen.
   const panzoom = isVideo
     ? new PanZoom(stage, el, {
         wheelMode: cb.wheelMode,
+        mode: cb.mode,
         onZoom: cb.onZoom,
-        interactive: false,
+        wheel: false,
+        pinch: false,
+        dblclickZoom: false,
       })
     : null;
 
@@ -254,6 +263,7 @@ export function createMediaView(
     rotate: () => panzoom?.rotate90(),
     nextPage: () => {},
     prevPage: () => {},
+    setMode: (mode) => panzoom?.setMode(mode),
     destroy: () => {
       el.removeEventListener("error", onMediaError);
       if (isVideo) {
@@ -317,6 +327,7 @@ export async function createPdfView(
 
   const panzoom = new PanZoom(stage, canvas, {
     wheelMode: cb.wheelMode,
+    mode: cb.mode,
     onZoom: cb.onZoom,
   });
 
@@ -363,7 +374,7 @@ export async function createPdfView(
     currentTask = null;
   };
 
-  async function renderPage(n: number): Promise<void> {
+  async function renderPage(n: number, resetScale = false): Promise<void> {
     if (!doc || doc.numPages === 0) {
       return;
     }
@@ -386,8 +397,10 @@ export async function createPdfView(
     const cssH = viewport.height / dpr;
     canvas.style.width = `${cssW}px`;
     canvas.style.height = `${cssH}px`;
+    // Zoom persists across page changes (pan re-centers); explicit zoom
+    // actions (fit/100%) repaint at their base and reset to 1×.
     panzoom.setMediaSize(cssW, cssH);
-    panzoom.setHundred();
+    panzoom.setScale(resetScale ? 1 : panzoom.totalScale);
     const context = canvas.getContext("2d");
     if (!context) {
       throw createFlvError("render-error", "Canvas 2D is unavailable.");
@@ -412,8 +425,8 @@ export async function createPdfView(
     }
   }
 
-  function scheduleRender(): void {
-    void renderPage(page).catch((err) => {
+  function scheduleRender(resetScale = false): void {
+    void renderPage(page, resetScale).catch((err) => {
       cb.onError(createFlvError("render-error", "The page could not be rendered.", err));
     });
   }
@@ -426,7 +439,7 @@ export async function createPdfView(
     if (resizeTimer) {
       clearTimeout(resizeTimer);
     }
-    resizeTimer = setTimeout(scheduleRender, 200);
+    resizeTimer = setTimeout(() => scheduleRender(false), 200);
   });
   resizeObserver.observe(stage);
 
@@ -438,30 +451,31 @@ export async function createPdfView(
     zoomBy: (factor: number) => panzoom.zoomBy(factor),
     fit: () => {
       renderMode = "fit";
-      scheduleRender();
+      scheduleRender(true);
     },
     hundred: () => {
       renderMode = "hundred";
-      scheduleRender();
+      scheduleRender(true);
     },
     rotate: () => {
       userRotation = (userRotation + 90) % 360;
-      scheduleRender();
+      scheduleRender(false);
     },
     nextPage: () => {
       if (page < (doc?.numPages ?? 1)) {
         page += 1;
-        scheduleRender();
+        scheduleRender(false);
         cb.onPageChange?.(page, doc?.numPages ?? 1);
       }
     },
     prevPage: () => {
       if (page > 1) {
         page -= 1;
-        scheduleRender();
+        scheduleRender(false);
         cb.onPageChange?.(page, doc?.numPages ?? 1);
       }
     },
+    setMode: (mode) => panzoom.setMode(mode),
     destroy: () => {
       if (resizeTimer) {
         clearTimeout(resizeTimer);

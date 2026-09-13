@@ -36,4 +36,11 @@ export const ICONS = {
   music: I(
     '<path d="M8.2 14.6V5.2l7.6-1.6v9.2"/><circle cx="6" cy="14.8" r="2.2"/><circle cx="13.6" cy="13" r="2.2"/>',
   ),
+  // Interaction modes.
+  select: I(
+    '<path d="M6 3.2 16 12.4h-4.6l2.4 4.9-2 1-2.4-4.9-3.4 3.1z" fill="currentColor" stroke="none"/>',
+  ),
+  hand: I(
+    '<g transform="scale(0.75) translate(1.5 1)"><path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v2"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></g>',
+  ),
 };
