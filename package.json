@@ -1,13 +1,21 @@
 {
   "name": "flviewer",
   "version": "0.0.2",
-  "description": "Pure client-side file preview for the browser: images & PDF with built-in minimal UI.",
+  "description": "Pure client-side file preview for the browser: images, PDF, video/audio, text family and office documents (DOCX/XLSX/PPTX) with built-in minimal UI.",
   "keywords": [
+    "audio",
+    "csv",
+    "docx",
     "file-preview",
     "image",
+    "markdown",
     "pdf",
+    "pptx",
+    "text",
+    "video",
     "viewer",
-    "web-component"
+    "web-component",
+    "xlsx"
   ],
   "license": "MIT",
   "author": "tinkink",
@@ -36,10 +44,13 @@
     "prepublishOnly": "vp pack --dts --publint --attw"
   },
   "dependencies": {
+    "@aiden0z/pptx-renderer": "^1.2.4",
+    "docx-preview": "^0.4.0",
     "dompurify": "^3.4.15",
     "highlight.js": "^11.12.0",
     "marked": "^18.0.12",
-    "pdfjs-dist": "^5.4.149"
+    "pdfjs-dist": "^5.4.149",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",

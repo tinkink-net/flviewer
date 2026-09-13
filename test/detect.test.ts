@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { detectKind, looksLikeText, textSubKindOf } from "../src/detect";
-import { ftypBytes } from "./helpers";
+import { cfbBytes, ftypBytes, tailOf, zipBytes } from "./helpers";
 
 const b = (...bytes: number[]) => new Uint8Array(bytes);
 const ascii = (s: string) => Uint8Array.from(s, (c) => c.charCodeAt(0));
@@ -287,5 +287,104 @@ describe("textSubKindOf", () => {
   it("returns null when nothing claims text", () => {
     expect(textSubKindOf({ mime: "application/octet-stream", name: "a.xyz" })).toBeNull();
     expect(textSubKindOf({})).toBeNull();
+  });
+});
+
+describe("detectKind — office family (ADR-7)", () => {
+  it("claims OOXML mimes, including macro-enabled variants", () => {
+    expect(
+      detectKind({
+        mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        bytes: b(0),
+      }),
+    ).toBe("docx");
+    expect(
+      detectKind({
+        mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        bytes: b(0),
+      }),
+    ).toBe("xlsx");
+    expect(
+      detectKind({
+        mime: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        bytes: b(0),
+      }),
+    ).toBe("pptx");
+    expect(
+      detectKind({
+        mime: "application/vnd.ms-excel.sheet.macroenabled.12",
+        bytes: b(0),
+      }),
+    ).toBe("xlsx");
+  });
+
+  it("claims OOXML extensions on generic mime", () => {
+    const zip = zipBytes(["[Content_Types].xml", "word/document.xml"]);
+    const tail = tailOf(zip);
+    expect(detectKind({ mime: "application/octet-stream", name: "a.DOCX", bytes: zip, tail })).toBe(
+      "docx",
+    );
+    expect(detectKind({ name: "a.xlsm", bytes: zip, tail })).toBe("xlsx");
+    expect(detectKind({ name: "a.pptm", bytes: zip, tail })).toBe("pptx");
+  });
+
+  it("claims require the container: a PDF renamed .docx stays pdf", () => {
+    expect(detectKind({ name: "report.docx", bytes: ascii("%PDF-1.4") })).toBe("pdf");
+    expect(detectKind({ name: "report.docx", bytes: ascii("junk!") })).toBe("unsupported");
+  });
+
+  it("bare PK containers resolve via the central-directory scan", () => {
+    const word = zipBytes(["[Content_Types].xml", "word/document.xml"]);
+    const xl = zipBytes(["[Content_Types].xml", "xl/workbook.xml", "xl/worksheets/sheet1.xml"]);
+    const ppt = zipBytes(["ppt/presentation.xml", "ppt/slides/slide1.xml"]);
+    expect(detectKind({ bytes: word, tail: tailOf(word) })).toBe("docx");
+    expect(detectKind({ bytes: xl, tail: tailOf(xl) })).toBe("xlsx");
+    expect(detectKind({ bytes: ppt, tail: tailOf(ppt) })).toBe("pptx");
+  });
+
+  it("scan is inconclusive without a tail slice → unsupported", () => {
+    const word = zipBytes(["word/document.xml"]);
+    expect(detectKind({ bytes: word })).toBe("unsupported");
+  });
+
+  it("non-office zip containers stay unsupported (Phase 5)", () => {
+    const zip = zipBytes(["readme.txt", "data/data.bin"]);
+    expect(detectKind({ bytes: zip, tail: tailOf(zip) })).toBe("unsupported");
+  });
+
+  it("CFB legacy binaries → unsupported, regardless of naming", () => {
+    for (const names of [["WordDocument"], ["Workbook"], ["PowerPoint Document"], ["Book"]]) {
+      const bytes = cfbBytes(names);
+      expect(detectKind({ bytes, tail: tailOf(bytes) })).toBe("unsupported");
+    }
+    // A legacy file renamed to an OOXML extension resolves by content.
+    const doc = cfbBytes(["WordDocument"]);
+    expect(detectKind({ mime: null, name: "report.docx", bytes: doc, tail: tailOf(doc) })).toBe(
+      "unsupported",
+    );
+  });
+
+  it("CFB encrypted OOXML → encrypted-office, even under an OOXML name", () => {
+    const encrypted = cfbBytes(["EncryptionInfo", "EncryptedPackage"]);
+    expect(detectKind({ bytes: encrypted, tail: tailOf(encrypted) })).toBe("encrypted-office");
+    expect(detectKind({ name: "secret.xlsx", bytes: encrypted, tail: tailOf(encrypted) })).toBe(
+      "encrypted-office",
+    );
+  });
+
+  it("CFB with an OOXML claim but an unreadable directory → encrypted-office", () => {
+    // Truncated CFB: signature present, walk cannot resolve — the claim tips it.
+    const bytes = cfbBytes([]).slice(0, 400);
+    expect(detectKind({ name: "a.docx", bytes })).toBe("encrypted-office");
+  });
+
+  it("legacy extensions without CFB magic fall through (content wins)", () => {
+    // A PDF named .doc stays a PDF.
+    expect(detectKind({ name: "doc.doc", bytes: ascii("%PDF-1.4") })).toBe("pdf");
+    // RTF masquerading as .doc has no text claim and no magic — pre-existing
+    // chain semantics apply (extension-less text is unsupported), not a
+    // legacy-office error.
+    const rtf = ascii("{\\rtf1\\ansi hello}");
+    expect(detectKind({ name: "resume.doc", bytes: rtf })).toBe("unsupported");
   });
 });

@@ -1,11 +1,14 @@
 import { open, mount } from "../src/index";
 import type { FlViewerElement } from "../src/index";
+import docxUrl from "../test/fixtures/minimal.docx?url";
 import jpgUrl from "../test/fixtures/tiny.jpg?url";
 import mp3Url from "../test/fixtures/tiny.mp3?url";
 import mp4Url from "../test/fixtures/tiny.mp4?url";
 import pdfUrl from "../test/fixtures/two-page.pdf?url";
 import pngUrl from "../test/fixtures/tiny.png?url";
+import pptxUrl from "../test/fixtures/minimal.pptx?url";
 import webmUrl from "../test/fixtures/tiny.webm?url";
+import xlsxUrl from "../test/fixtures/multi-sheet.xlsx?url";
 
 const wc = document.querySelector<FlViewerElement>("#wc")!;
 
@@ -57,6 +60,15 @@ document.addEventListener("click", async (ev) => {
     case "open-pdf":
       open(pdfUrl, { title: "two-page.pdf" });
       break;
+    case "open-docx":
+      open(docxUrl, { title: "minimal.docx" });
+      break;
+    case "open-xlsx":
+      open(xlsxUrl, { title: "multi-sheet.xlsx" });
+      break;
+    case "open-pptx":
+      open(pptxUrl, { title: "minimal.pptx" });
+      break;
     case "open-mp4":
       open(mp4Url, { title: "tiny.mp4" });
       break;
@@ -104,6 +116,15 @@ document.addEventListener("click", async (ev) => {
       break;
     case "mount-pdf":
       embedController.update(pdfUrl);
+      break;
+    case "mount-docx":
+      embedController.update(docxUrl);
+      break;
+    case "mount-xlsx":
+      embedController.update(xlsxUrl);
+      break;
+    case "mount-pptx":
+      embedController.update(pptxUrl);
       break;
     case "mount-png":
       embedController.update(pngUrl);

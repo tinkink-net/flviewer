@@ -14,7 +14,7 @@ export interface SourceOptions {
   transformLinkUrl?: FlvUrlTransform;
 }
 
-export type FlvKind = "image" | "pdf" | "video" | "audio" | "text";
+export type FlvKind = "image" | "pdf" | "video" | "audio" | "text" | "docx" | "xlsx" | "pptx";
 
 /** Text-family sub-kind (see CONTEXT.md "Sub-kind"). */
 export type FlvTextKind = "plain" | "code" | "markdown" | "json" | "csv" | "xml";
@@ -26,6 +26,7 @@ export type FlvErrorCode =
   | "fetch-error"
   | "unsupported-type"
   | "encrypted-pdf"
+  | "encrypted-office"
   | "render-error"
   | "aborted";
 
@@ -45,10 +46,12 @@ export interface FlvReadyDetail {
 }
 
 export interface FlvTruncatedDetail {
-  /** Bytes kept (after the truncation caps were applied). */
-  bytes: number;
-  /** Lines kept. */
-  lines: number;
+  /** Bytes kept (after the truncation caps were applied). Text family. */
+  bytes?: number;
+  /** Lines / rows kept. */
+  lines?: number;
+  /** Cells kept (XLSX per-sheet cap, ADR-7). */
+  cells?: number;
 }
 
 export interface FlvErrorDetail {

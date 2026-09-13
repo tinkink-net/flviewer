@@ -4,6 +4,7 @@ const DEFAULT_MESSAGES: Record<FlvErrorCode, string> = {
   "fetch-error": "The file could not be downloaded.",
   "unsupported-type": "This file type is not supported.",
   "encrypted-pdf": "This PDF is password protected.",
+  "encrypted-office": "This Office document is password protected.",
   "render-error": "The file could not be rendered.",
   aborted: "The operation was aborted.",
 };

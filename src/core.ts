@@ -8,6 +8,9 @@ import { injectFlvStyles } from "./stylesheet";
 import type { FlvError, FlvEventMap, FlvEventType, FlvKind, Source, SourceOptions } from "./types";
 import { createImageView, createMediaView, createPdfView, formatMediaTime } from "./views";
 import type { FlvView, ViewCallbacks } from "./views";
+import { createDocxView } from "./docx-view";
+import { createXlsxView } from "./xlsx-view";
+import { createPptxView } from "./pptx-view";
 
 export interface CoreOptions {
   isOverlay: boolean;
@@ -103,6 +106,7 @@ function errorTitleFor(code: FlvError["code"]): string {
     case "unsupported-type":
       return "Unsupported file";
     case "encrypted-pdf":
+    case "encrypted-office":
       return "Password protected";
     case "render-error":
       return "Could not render";
@@ -230,9 +234,16 @@ export class Core {
         this.#view?.fit();
         break;
       case "ArrowLeft":
+        // Pager kinds navigate; prevent native stage scroll double-acting.
+        if (this.#view?.hasPages) {
+          ev.preventDefault();
+        }
         this.#view?.prevPage();
         break;
       case "ArrowRight":
+        if (this.#view?.hasPages) {
+          ev.preventDefault();
+        }
         this.#view?.nextPage();
         break;
       case "h":
@@ -533,11 +544,17 @@ export class Core {
           this.#view =
             loaded.kind === "pdf"
               ? await createPdfView(this.#stage, loaded, callbacks)
-              : loaded.kind === "video" || loaded.kind === "audio"
-                ? createMediaView(this.#stage, loaded, callbacks)
-                : loaded.kind === "text"
-                  ? await createTextView(this.#stage, loaded, callbacks)
-                  : createImageView(this.#stage, loaded, callbacks);
+              : loaded.kind === "docx"
+                ? await createDocxView(this.#stage, loaded, callbacks)
+                : loaded.kind === "xlsx"
+                  ? await createXlsxView(this.#stage, loaded, callbacks)
+                  : loaded.kind === "pptx"
+                    ? await createPptxView(this.#stage, loaded, callbacks)
+                    : loaded.kind === "video" || loaded.kind === "audio"
+                      ? createMediaView(this.#stage, loaded, callbacks)
+                      : loaded.kind === "text"
+                        ? await createTextView(this.#stage, loaded, callbacks)
+                        : createImageView(this.#stage, loaded, callbacks);
         } catch (err) {
           if (isAbortError(err)) {
             return;
@@ -605,7 +622,7 @@ export class Core {
     this.#errorBox.hidden = state !== "error";
     const interactive = state === "ready";
     const controls = this.#toolbar.querySelectorAll<HTMLButtonElement | HTMLInputElement>(
-      ".flv-btn, .flv-media-slider",
+      ".flv-btn, .flv-media-slider, .flv-sheet-select",
     );
     for (const ctl of controls) {
       if (ctl.dataset.flvPermanent !== "true") {
@@ -615,15 +632,24 @@ export class Core {
   }
 
   #updatePageIndicator(page: number, total: number): void {
-    const isPdf = this.#view?.hasPages === true;
-    this.#pageIndicator.hidden = !isPdf;
-    this.#pageIndicator.textContent = isPdf ? `${page} / ${total}` : "";
+    const view = this.#view;
+    const hasPages = view?.hasPages === true;
+    this.#pageIndicator.hidden = !hasPages;
+    // XLSX replaces the `page / total` label with its sheet dropdown (ADR-7).
+    const selector = view?.pageSelector ?? null;
+    if (selector) {
+      if (this.#pageIndicator.firstElementChild !== selector) {
+        this.#pageIndicator.replaceChildren(selector);
+      }
+    } else {
+      this.#pageIndicator.textContent = hasPages ? `${page} / ${total}` : "";
+    }
     for (const btn of this.#toolbar.querySelectorAll<HTMLButtonElement>(
       'button[data-flv-pager="true"]',
     )) {
-      btn.hidden = !isPdf;
+      btn.hidden = !hasPages;
     }
-    this.#sepPager.hidden = !isPdf;
+    this.#sepPager.hidden = !hasPages;
     const prev = this.#button("Previous page");
     const next = this.#button("Next page");
     if (prev) {
@@ -642,7 +668,8 @@ export class Core {
         btn.hidden = !visible;
       }
     };
-    const isDoc = kind === "image" || kind === "pdf";
+    const isOfficePannable = kind === "docx" || kind === "pptx";
+    const isDoc = kind === "image" || kind === "pdf" || isOfficePannable;
     const isVideo = kind === "video";
     const isMedia = isVideo || kind === "audio";
     const hasPanZoom = isDoc || isVideo;
@@ -652,7 +679,8 @@ export class Core {
     showBtn("Zoom out", isDoc);
     showBtn("Fit", isDoc || isVideo);
     showBtn("Actual size", isDoc || isVideo);
-    showBtn("Rotate", isDoc);
+    // Rotation is a fixed-page/raster transform — flow kinds don't offer it.
+    showBtn("Rotate", kind === "image" || kind === "pdf");
     showBtn("Toggle source", kind === "text" && this.#loaded?.textKind === "markdown");
     if (kind !== "text" || this.#loaded?.textKind !== "markdown") {
       // New source: the toggle resets to rendered mode.
@@ -792,6 +820,9 @@ export class Core {
     this.#view?.destroy();
     this.#view = null;
     this.#stage.replaceChildren();
+    // Reset the pager slot (a view-owned sheet selector may be mounted).
+    this.#pageIndicator.replaceChildren();
+    this.#pageIndicator.textContent = "";
   }
 
   download(): void {

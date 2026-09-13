@@ -12,6 +12,9 @@ import { chromium } from "playwright";
 const root = "dist";
 const png = readFileSync("test/fixtures/tiny.png");
 const pdf = readFileSync("test/fixtures/two-page.pdf");
+const docx = readFileSync("test/fixtures/minimal.docx");
+const xlsx = readFileSync("test/fixtures/multi-sheet.xlsx");
+const pptx = readFileSync("test/fixtures/minimal.pptx");
 const md = `# Verify dist
 
 Rendered markdown through the built artifact (ADR-6): prose + lazy
@@ -35,6 +38,21 @@ const server = createServer((req, res) => {
   if (url.pathname === "/fixture.pdf") {
     res.setHeader("content-type", "application/pdf");
     res.end(pdf);
+    return;
+  }
+  if (url.pathname === "/fixture.docx") {
+    res.setHeader("content-type", "application/octet-stream");
+    res.end(docx);
+    return;
+  }
+  if (url.pathname === "/fixture.xlsx") {
+    res.setHeader("content-type", "application/octet-stream");
+    res.end(xlsx);
+    return;
+  }
+  if (url.pathname === "/fixture.pptx") {
+    res.setHeader("content-type", "application/octet-stream");
+    res.end(pptx);
     return;
   }
   if (url.pathname === "/fixture.md") {
@@ -256,6 +274,91 @@ check(
 );
 console.log(
   `  plain diagnostics: pre=${String(textChecks.plainPreClass)} text=${String(textChecks.plainText)}`,
+);
+
+// Office family (ADR-7): per-kind lazy engines through the built artifact,
+// including the jszip browser build.
+const officeChecks = await page.evaluate(async () => {
+  const moduleUrl = "/dist/index.mjs";
+  const { mount } = (await import(moduleUrl)) as typeof import("../src/index");
+  const wait = <T>(fn: () => T | null | undefined, ms = 10000): Promise<T> =>
+    new Promise((resolve, reject) => {
+      const start = performance.now();
+      const tick = () => {
+        const v = fn();
+        if (v !== null && v !== undefined) {
+          resolve(v);
+          return;
+        }
+        if (performance.now() - start > ms) {
+          reject(new Error("timeout"));
+          return;
+        }
+        setTimeout(tick, 50);
+      };
+      tick();
+    });
+
+  const out: Record<string, unknown> = {};
+  const hostFor = (): HTMLElement => {
+    const host = document.createElement("div");
+    host.style.cssText = "width:600px;height:400px";
+    document.body.append(host);
+    return host;
+  };
+
+  const docxHost = hostFor();
+  const docxController = mount(docxHost, "/fixture.docx");
+  out.docxReady = await new Promise<{ kind?: string; error?: { code: string } }>((resolve) => {
+    docxController.on("ready", resolve as never);
+    docxController.on("error", (d: { error: { code: string } }) => resolve({ error: d.error }));
+  });
+  out.docxText = (await wait(() =>
+    docxHost.querySelector(".flv-docx")?.textContent?.includes("Hello flviewer DOCX") ? true : null,
+  ).then(
+    () => true,
+    () => false,
+  )) as boolean;
+  docxController.destroy();
+
+  const xlsxHost = hostFor();
+  const xlsxController = mount(xlsxHost, "/fixture.xlsx");
+  out.xlsxReady = await new Promise<{ kind?: string; pages?: number; error?: { code: string } }>(
+    (resolve) => {
+      xlsxController.on("ready", resolve as never);
+      xlsxController.on("error", (d: { error: { code: string } }) => resolve({ error: d.error }));
+    },
+  );
+  out.xlsxSelect = Boolean(xlsxHost.querySelector("select.flv-sheet-select"));
+  xlsxController.destroy();
+
+  const pptxHost = hostFor();
+  const pptxController = mount(pptxHost, "/fixture.pptx");
+  out.pptxReady = await new Promise<{ kind?: string; pages?: number; error?: { code: string } }>(
+    (resolve) => {
+      pptxController.on("ready", resolve as never);
+      pptxController.on("error", (d: { error: { code: string } }) => resolve({ error: d.error }));
+    },
+  );
+  pptxController.destroy();
+  return out;
+});
+check(
+  "docx via built artifact (lazy docx-preview + jszip browser build)",
+  (officeChecks.docxReady as { kind?: string }).kind === "docx" && officeChecks.docxText === true,
+  JSON.stringify(officeChecks.docxReady),
+);
+check(
+  "xlsx via built artifact (lazy SheetJS + sheet selector)",
+  (officeChecks.xlsxReady as { kind?: string }).kind === "xlsx" &&
+    (officeChecks.xlsxReady as { pages?: number }).pages === 2,
+  JSON.stringify(officeChecks.xlsxReady),
+);
+check(
+  "pptx via built artifact (lazy pptx-renderer)",
+  (officeChecks.pptxReady as { kind?: string }).kind === "pptx" &&
+    (officeChecks.pptxReady as { pages?: number }).pages === 2,
+  JSON.stringify(officeChecks.pptxReady),
 );
 
 check("no page errors / console errors", errors.length === 0, errors.slice(0, 3).join(" | "));

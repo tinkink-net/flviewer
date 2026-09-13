@@ -1,11 +1,11 @@
 # flviewer
 
-Pure client-side file preview for the browser. Images, PDF, video & audio, with a minimal built-in UI.
+Pure client-side file preview for the browser. Images, PDF, video & audio, the text family (txt / code / JSON / CSV / XML / Markdown-as-HTML) and office documents (DOCX / XLSX / PPTX), with a minimal built-in UI.
 
 - **Zero framework dependencies** — vanilla factory API plus a `<fl-viewer>` web component
 - **Overlay & Embed** — fullscreen modal via `open()`, or render inside any container via `mount()`
 - **Streaming media** — video/audio URL sources play directly from the URL (Range-request seeking, no full download)
-- **Lazy pdf.js** — image previews never download the PDF engine; on first PDF preview the viewer loads a ~157 KB gz engine chunk plus a ~357 KB gz worker chunk. No consumer configuration required, works in bundled apps, CDN-direct and raw-ESM contexts
+- **Lazy engines per format** — image and text previews never download heavy engines: pdf.js (~157 KB gz engine + ~356 KB gz worker), the text pipeline (~86 KB gz), docx-preview (~25 KB gz + shared jszip ~31 KB gz), SheetJS (~171 KB gz) and the pptx renderer (~477 KB gz, incl. echarts for charts) each load only on first use of their format. No consumer configuration required, works in bundled apps, CDN-direct and raw-ESM contexts
 - **Typed errors** — failures resolve to `{ code, message, cause? }` events, never exceptions
 
 ## Install
@@ -61,22 +61,23 @@ open(url, {
 
 One event stream, two views — `controller.on(name, cb)` and bubbled `flv:<name>` CustomEvents:
 
-| Event        | Detail                    | Fired when                                |
-| ------------ | ------------------------- | ----------------------------------------- |
-| `ready`      | `{ kind, pages?, name? }` | content rendered and interactive          |
-| `error`      | `{ error: FlvError }`     | typed failure (see below)                 |
-| `close`      | `{ by: 'user' \| 'api' }` | Overlay closed (Esc / button / `close()`) |
-| `pagechange` | `{ page, total }`         | visible PDF page changed                  |
-| `zoom`       | `{ scale }`               | magnification changed                     |
+| Event        | Detail                       | Fired when                                  |
+| ------------ | ---------------------------- | ------------------------------------------- |
+| `ready`      | `{ kind, pages?, name? }`    | content rendered and interactive            |
+| `error`      | `{ error: FlvError }`        | typed failure (see below)                   |
+| `close`      | `{ by: 'user' \| 'api' }`    | Overlay closed (Esc / button / `close()`)   |
+| `pagechange` | `{ page, total }`            | PDF page / XLSX sheet / PPTX slide changed  |
+| `zoom`       | `{ scale }`                  | magnification changed                       |
+| `truncated`  | `{ bytes?, lines?, cells? }` | preview hit a truncation cap (kept amounts) |
 
-`kind` is one of `image`, `pdf`, `video`, `audio`.
+`kind` is one of `image`, `pdf`, `video`, `audio`, `text`, `docx`, `xlsx`, `pptx`.
 
-Error codes: `fetch-error`, `unsupported-type`, `encrypted-pdf`, `render-error`, `aborted`.
+Error codes: `fetch-error`, `unsupported-type`, `encrypted-pdf`, `encrypted-office`, `render-error`, `aborted`.
 
 ## Controls
 
-Toolbar: zoom in/out · fit · 100% · rotate · page prev/next + indicator (PDF only) · download · fullscreen · close (Overlay only).
-Interactions: wheel/pinch zoom, pan, double-click 1×↔2×, keyboard (`Esc`, `+`/`-`, arrows, `0`).
+Toolbar: zoom in/out · fit · 100% · rotate · page prev/next + indicator / sheet dropdown (PDF, XLSX, PPTX) · download · fullscreen · close (Overlay only).
+Interactions: select mode (default) — wheel scrolls the document; hand mode — drag pans (clamped) and the wheel zooms; double-click 1×↔2×, pinch zoom; keyboard (`Esc`, `+`/`-`, arrows, `0`, `h`/`v`). Text and XLSX views scroll natively.
 
 ## Theming
 

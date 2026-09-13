@@ -2,6 +2,7 @@ import {
   AUDIO_EXTENSIONS,
   detectKind,
   extensionOf,
+  isLegacyOfficeFormat,
   textSubKindOf,
   VIDEO_EXTENSIONS,
 } from "./detect";
@@ -26,6 +27,9 @@ export type ProgressCallback = (loaded: number, total: number | null) => void;
 
 const HEAD_BYTES = 64;
 const SNIFF_RANGE = "bytes=0-63";
+/** Detection slices (ADR-7): CFB directory and ZIP central-directory sniffs. */
+const DETECT_HEAD_BYTES = 65536;
+const DETECT_TAIL_BYTES = 65536;
 
 function nameFromUrl(url: string): string {
   const path = url.split(/[?#]/)[0] ?? "";
@@ -40,6 +44,9 @@ function nameFromUrl(url: string): string {
 function extensionForKind(kind: FlvKind, mime: string): string {
   if (kind === "pdf") {
     return "pdf";
+  }
+  if (kind === "docx" || kind === "xlsx" || kind === "pptx") {
+    return kind;
   }
   if (kind === "text") {
     const sub = (mime.split(";")[0] ?? "").trim().replace(/^text\//, "");
@@ -127,10 +134,17 @@ async function blobFromResponse(
   return new Blob(chunks, { type: contentType });
 }
 
-async function headBytes(blob: Blob): Promise<Uint8Array> {
-  const sliced = blob.slice(0, HEAD_BYTES);
-  const buf = await sliced.arrayBuffer();
-  return new Uint8Array(buf);
+/** Head + tail slices for the office container sniffs (ADR-7). */
+async function detectSlices(
+  blob: Blob,
+): Promise<{ bytes: Uint8Array; tail?: { bytes: Uint8Array; fileOffset: number } }> {
+  const bytes = new Uint8Array(await blob.slice(0, DETECT_HEAD_BYTES).arrayBuffer());
+  if (blob.size <= DETECT_HEAD_BYTES) {
+    return { bytes };
+  }
+  const fileOffset = Math.max(0, blob.size - DETECT_TAIL_BYTES);
+  const tailBytes = new Uint8Array(await blob.slice(fileOffset).arrayBuffer());
+  return { bytes, tail: { bytes: tailBytes, fileOffset } };
 }
 
 async function fetchResponse(
@@ -309,20 +323,23 @@ export async function loadSource(
     throw createFlvError("unsupported-type");
   }
 
-  const bytes = await headBytes(blob);
+  const { bytes, tail } = await detectSlices(blob);
   const kind = detectKind({
     mime: blob.type,
     name,
     bytes,
+    tail,
   });
+  if (kind === "encrypted-office") {
+    throw createFlvError("encrypted-office");
+  }
   if (kind === "unsupported") {
-    const err = createFlvError(
-      "unsupported-type",
-      blob.type
+    const message = isLegacyOfficeFormat({ mime: blob.type, name })
+      ? "Legacy binary Office formats (.doc, .xls, .ppt) are not supported."
+      : blob.type
         ? `This file type is not supported (received "${blob.type}").`
-        : "This file type is not supported.",
-    );
-    throw err;
+        : "This file type is not supported.";
+    throw createFlvError("unsupported-type", message);
   }
   return {
     blob,

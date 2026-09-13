@@ -330,6 +330,14 @@ video.flv-media {
 }
 .flv-text-content {
   min-height: 100%;
+  /* Capped, centered content box — full-bleed text reads like a demo.
+     Vertical breathing room above and below — the bottom clears the floating
+     toolbar (~46px tall, 20px from the edge) so the last lines stay readable.
+     Horizontal padding stays with the content blocks so wide tables keep
+     their full scroll range. */
+  max-width: 46rem;
+  margin-inline: auto;
+  padding: 24px 0 96px;
 }
 .flv-plain,
 .flv-code {
@@ -338,6 +346,10 @@ video.flv-media {
   white-space: pre;
   tab-size: 4;
   color: var(--flv-fg);
+  /* Long lines scroll inside the capped box instead of stretching it. */
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
 }
 .flv-truncated {
   position: sticky;
@@ -381,9 +393,10 @@ video.flv-media {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-/* CSV table (RFC-4180) with a sticky header. */
+/* CSV table (RFC-4180) with a sticky header. Narrow sheets center inside the
+   capped content box; wide ones overflow to the right into the stage scroll. */
 .flv-table {
-  margin: 0;
+  margin-inline: auto;
   border-collapse: collapse;
 }
 .flv-table th,
@@ -403,11 +416,69 @@ video.flv-media {
 .flv-table tbody tr:nth-child(even) {
   background: rgba(255, 255, 255, 0.04);
 }
+/* XLSX (ADR-7): native scroll, no transform ancestor — sticky header works.
+   Sheet selector rides the pager slot between the arrows. */
+.flv-xlsx {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+}
+.flv-xlsx-table {
+  background: #1c1c20;
+}
+.flv-sheet-select {
+  flex: none;
+  max-width: 170px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--flv-fg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  color-scheme: dark;
+}
+.flv-sheet-select:hover {
+  border-color: rgba(255, 255, 255, 0.45);
+}
+.flv-sheet-select:focus-visible {
+  outline: 2px solid var(--flv-accent);
+  outline-offset: 1px;
+}
+.flv-sheet-select:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+/* DOCX (ADR-7): docx-preview output re-scoped under the flv- container.
+   Continuous stacked pages flow vertically; the engine's gray canvas
+   background is replaced by the viewer chrome. */
+.flv-docx .docx-wrapper {
+  background: transparent;
+  padding: 16px;
+  gap: 16px;
+}
+/* Select mode is for selecting: office pan kinds expose their text there
+   (hand mode keeps user-select off so drags never start selections). */
+.flv-stage.flv-mode-select .flv-docx,
+.flv-stage.flv-mode-select .flv-pptx {
+  user-select: text;
+  -webkit-user-select: text;
+}
+/* PPTX (ADR-7): the engine renders one slide at intrinsic size inside the
+   PanZoom media box; the viewer chrome supplies slide shadow and background. */
+.flv-pptx {
+  background: #fff;
+  box-shadow: var(--flv-shadow);
+  overflow: hidden;
+}
 /* Rendered Markdown prose (ADR-6). */
 .flv-prose {
   max-width: 46rem;
   margin: 0 auto;
-  padding: 28px 32px 48px;
+  /* Vertical rhythm comes from the capped content box (24/48) — the prose
+     only adds its inline gutters. */
+  padding: 4px 32px 0;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 15px;
   line-height: 1.65;

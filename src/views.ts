@@ -5,7 +5,7 @@ import type { PanZoomMode } from "./panzoom";
 import { PdfBinaryDataFactory } from "./pdf-assets";
 import { createBlobWorker } from "./pdf-worker";
 import type { LoadedSource } from "./source";
-import type { FlvError, FlvUrlTransform } from "./types";
+import type { FlvError, FlvTruncatedDetail, FlvUrlTransform } from "./types";
 
 /** Toolbar-side playback controls the Core owns; media views wire into them. */
 export interface MediaControlsHost {
@@ -26,8 +26,8 @@ export interface ViewCallbacks {
   onFullscreenToggle?: () => void;
   /** Present for media views: bind the element to the toolbar media controls. */
   mediaControls?: MediaControlsHost;
-  /** Text preview hit a truncation cap (ADR-6) — kept amounts. */
-  onTruncated?: (detail: { bytes: number; lines: number }) => void;
+  /** Text/XLSX preview hit a truncation cap — kept amounts (ADR-6/ADR-7). */
+  onTruncated?: (detail: FlvTruncatedDetail) => void;
   /** Toolbar-independent download request (truncation notice hint). */
   onDownload?: () => void;
   /** Markdown rendered ↔ source toggle flipped (source mode = true). */
@@ -42,6 +42,12 @@ export interface FlvView {
   /** Whether the document has pages (PDF) — toggles the pager UI. */
   readonly hasPages: boolean;
   readonly pageCount?: number;
+  /**
+   * Optional custom page indicator element (XLSX sheet dropdown, ADR-7) that
+   * replaces the `page / total` label between the pager arrows. The Core
+   * mounts it into the indicator slot; the view owns its lifetime.
+   */
+  readonly pageSelector?: HTMLElement | null;
   zoomBy(factor: number): void;
   fit(): void;
   hundred(): void;
