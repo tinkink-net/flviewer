@@ -1,9 +1,15 @@
 import { createFlvError, isPasswordException } from "./errors";
+import { ICONS } from "./icons";
 import { PanZoom } from "./panzoom";
 import { PdfBinaryDataFactory } from "./pdf-assets";
 import { createBlobWorker } from "./pdf-worker";
 import type { LoadedSource } from "./source";
 import type { FlvError } from "./types";
+
+/** Toolbar-side playback controls the Core owns; media views wire into them. */
+export interface MediaControlsHost {
+  connect(el: HTMLMediaElement): void;
+}
 
 export interface ViewCallbacks {
   wheelMode: "always" | "ctrl";
@@ -13,6 +19,10 @@ export interface ViewCallbacks {
   onPageChange?: (page: number, total: number) => void;
   /** Fired once the view is interactive (first page painted for PDF). */
   onFirstRender?: () => void;
+  /** Toggle viewer fullscreen (video double-click). */
+  onFullscreenToggle?: () => void;
+  /** Present for media views: bind the element to the toolbar media controls. */
+  mediaControls?: MediaControlsHost;
 }
 
 export interface FlvView {
@@ -60,6 +70,11 @@ export function createImageView(
   loaded: LoadedSource,
   cb: ViewCallbacks,
 ): FlvView {
+  if (!loaded.blob) {
+    // Unreachable via the detection chain (only media kinds stream), but
+    // guarded so the view contract stays total.
+    throw createFlvError("render-error", "The image payload is missing.");
+  }
   const objectUrl = URL.createObjectURL(loaded.blob);
   const img = document.createElement("img");
   img.className = "flv-media flv-img";
@@ -104,6 +119,155 @@ export function createImageView(
       panzoom.destroy();
       img.remove();
       URL.revokeObjectURL(objectUrl);
+    },
+  };
+}
+
+/**
+ * Media time formatter shared with the Core toolbar (m:ss, or h:mm:ss).
+ */
+export function formatMediaTime(sec: number): string {
+  if (!Number.isFinite(sec)) {
+    return "–:––";
+  }
+  const total = Math.max(0, Math.floor(sec));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const mm = h > 0 ? String(m).padStart(2, "0") : String(m);
+  const ss = String(s).padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+/**
+ * `<video>`/`<audio>` view (Phase 1). Created synchronously like the image
+ * view — `ready` fires once the element is mounted; decode failures surface
+ * later through the media element's `error` event as a typed `render-error`
+ * (never an exception across the API boundary, ADR-4).
+ *
+ * Playback controls live in the Core toolbar (ADR-5): the element is mounted
+ * with `controls = false` and wired to the toolbar via
+ * `cb.mediaControls.connect()`. Video zoom is two-level only (fit / 100%);
+ * audio gets a placeholder card and no transform at all.
+ */
+export function createMediaView(
+  stage: HTMLElement,
+  loaded: LoadedSource,
+  cb: ViewCallbacks,
+): FlvView {
+  const isVideo = loaded.kind === "video";
+  const el = document.createElement(isVideo ? "video" : "audio");
+  el.className = isVideo ? "flv-media flv-video" : "flv-media flv-audio";
+  el.preload = "metadata";
+  el.controls = false;
+  if (isVideo) {
+    el.setAttribute("playsinline", "");
+  }
+  if (loaded.name) {
+    el.setAttribute("aria-label", loaded.name);
+  }
+
+  let objectUrl: string | null = null;
+  if (loaded.blob) {
+    objectUrl = URL.createObjectURL(loaded.blob);
+    el.src = objectUrl;
+  } else if (loaded.url) {
+    // Streaming source: hand the URL to the media element so the browser can
+    // use Range-request seeking instead of a full download.
+    el.src = loaded.url;
+  }
+
+  // Video transforms: two-level zoom (fit / 100%) applied programmatically —
+  // no wheel/pinch/drag, so nothing user-facing scales the element (the
+  // native-controls blow-up bug class). Pan for oversized 100% arrives with
+  // the interaction-modes pass.
+  const panzoom = isVideo
+    ? new PanZoom(stage, el, {
+        wheelMode: cb.wheelMode,
+        onZoom: cb.onZoom,
+        interactive: false,
+      })
+    : null;
+
+  const applyMeta = () => {
+    if (!isVideo || !panzoom) {
+      return;
+    }
+    const video = el as HTMLVideoElement;
+    if (video.videoWidth > 0 && video.videoHeight > 0) {
+      panzoom.setMediaSize(video.videoWidth, video.videoHeight);
+      panzoom.fit();
+    }
+  };
+  el.addEventListener("loadedmetadata", applyMeta);
+  if (el.readyState >= 1) {
+    applyMeta();
+  }
+
+  const onDblClick = () => {
+    cb.onFullscreenToggle?.();
+  };
+  if (isVideo) {
+    el.addEventListener("dblclick", onDblClick);
+  }
+
+  const onMediaError = () => {
+    const mediaError = el.error;
+    const detail = mediaError ? { code: mediaError.code, message: mediaError.message } : undefined;
+    cb.onError(
+      createFlvError("render-error", "The media could not be played by this browser.", detail),
+    );
+  };
+  el.addEventListener("error", onMediaError);
+
+  stage.append(el);
+  cb.mediaControls?.connect(el);
+
+  // Audio: the element itself stays invisible; the stage shows a placeholder
+  // card (icon + filename + duration) while the toolbar acts as the player.
+  let card: HTMLElement | null = null;
+  if (!isVideo) {
+    el.hidden = true;
+    card = document.createElement("div");
+    card.className = "flv-audio-card";
+    card.innerHTML = ICONS.music;
+    const name = document.createElement("div");
+    name.className = "flv-audio-name";
+    name.textContent = loaded.name ?? "Audio";
+    const duration = document.createElement("div");
+    duration.className = "flv-audio-duration";
+    const syncDuration = () => {
+      duration.textContent =
+        Number.isFinite(el.duration) && el.duration > 0 ? formatMediaTime(el.duration) : "";
+    };
+    el.addEventListener("durationchange", syncDuration);
+    el.addEventListener("loadedmetadata", syncDuration);
+    card.append(name, duration);
+    stage.append(card);
+  }
+
+  return {
+    hasPages: false,
+    zoomBy: (factor: number) => panzoom?.zoomBy(factor),
+    fit: () => panzoom?.fit(),
+    hundred: () => panzoom?.setHundred(),
+    rotate: () => panzoom?.rotate90(),
+    nextPage: () => {},
+    prevPage: () => {},
+    destroy: () => {
+      el.removeEventListener("error", onMediaError);
+      if (isVideo) {
+        el.removeEventListener("dblclick", onDblClick);
+      }
+      el.pause();
+      el.removeAttribute("src");
+      el.load();
+      panzoom?.destroy();
+      el.remove();
+      card?.remove();
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
     },
   };
 }
@@ -172,6 +336,9 @@ export async function createPdfView(
   let firstRendered = false;
 
   // getDocument may transfer the buffer; always hand pdf.js a fresh copy.
+  if (!loaded.blob) {
+    throw createFlvError("render-error", "The PDF payload is missing.");
+  }
   const data = new Uint8Array(await loaded.blob.arrayBuffer());
 
   try {

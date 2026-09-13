@@ -4,8 +4,8 @@ import { ICONS } from "./icons";
 import { loadSource, suggestFilename } from "./source";
 import type { LoadedSource } from "./source";
 import { injectFlvStyles } from "./stylesheet";
-import type { FlvError, FlvEventMap, FlvEventType, Source, SourceOptions } from "./types";
-import { createImageView, createPdfView } from "./views";
+import type { FlvError, FlvEventMap, FlvEventType, FlvKind, Source, SourceOptions } from "./types";
+import { createImageView, createMediaView, createPdfView, formatMediaTime } from "./views";
 import type { FlvView, ViewCallbacks } from "./views";
 
 export interface CoreOptions {
@@ -76,6 +76,10 @@ const BUTTONS: ButtonSpec[] = [
   },
 ];
 
+// Media playback prefs persist across sources within a session.
+let savedVolume = 1;
+let savedMuted = false;
+
 function errorTitleFor(code: FlvError["code"]): string {
   switch (code) {
     case "fetch-error":
@@ -105,6 +109,17 @@ export class Core {
   #errorTitle: HTMLElement;
   #errorDetail: HTMLElement;
   #pageIndicator: HTMLElement;
+  #mediaGroup: HTMLElement;
+  #sepMedia: HTMLElement;
+  #sepTransform: HTMLElement;
+  #sepPager: HTMLElement;
+  #playBtn: HTMLButtonElement;
+  #timeLabel: HTMLElement;
+  #seek: HTMLInputElement;
+  #muteBtn: HTMLButtonElement;
+  #volume: HTMLInputElement;
+  #mediaEl: HTMLMediaElement | null = null;
+  #scrubbing = false;
   #view: FlvView | null = null;
   #loaded: LoadedSource | null = null;
   #lastSource: { source: Source; options?: SourceOptions } | null = null;
@@ -123,13 +138,54 @@ export class Core {
     if (ev.defaultPrevented) {
       return;
     }
-    switch (ev.key) {
-      case "Escape":
-        if (this.#options.isOverlay) {
-          ev.preventDefault();
-          this.#options.requestClose?.();
+    if (ev.key === "Escape" && this.#options.isOverlay) {
+      ev.preventDefault();
+      this.#options.requestClose?.();
+      return;
+    }
+    // Media kinds own the keyboard: playback transport instead of zoom/pages.
+    const kind = this.#loaded?.kind;
+    if ((kind === "video" || kind === "audio") && this.#mediaEl && this.#state === "ready") {
+      const target = ev.target as HTMLElement | null;
+      const onSlider = target instanceof HTMLInputElement && target.type === "range";
+      const onButton = target instanceof HTMLButtonElement;
+      if (ev.key === " ") {
+        // Focused buttons/sliders activate natively; don't double-toggle.
+        if (onButton || onSlider || ev.repeat) {
+          return;
         }
-        break;
+        ev.preventDefault();
+        this.#togglePlay();
+        return;
+      }
+      switch (ev.key) {
+        case "ArrowLeft":
+        case "ArrowRight":
+          if (onSlider) {
+            return; // Native slider stepping already seeks.
+          }
+          ev.preventDefault();
+          this.#seekBy(ev.key === "ArrowLeft" ? -5 : 5);
+          return;
+        case "ArrowUp":
+        case "ArrowDown":
+          if (onSlider) {
+            return;
+          }
+          ev.preventDefault();
+          this.#volumeBy(ev.key === "ArrowUp" ? 0.1 : -0.1);
+          return;
+        case "m":
+        case "M":
+          if (!ev.repeat) {
+            this.#toggleMuted();
+          }
+          return;
+      }
+      // +, -, 0 and page arrows are intentionally inert for media.
+      return;
+    }
+    switch (ev.key) {
       case "+":
       case "=":
         ev.preventDefault();
@@ -209,12 +265,71 @@ export class Core {
     toolbar.setAttribute("aria-label", "Viewer controls");
     this.#toolbar = toolbar;
 
+    // Media group (video/audio): play/pause · seek+time · mute/volume.
+    const mediaGroup = document.createElement("div");
+    mediaGroup.className = "flv-media-group";
+    mediaGroup.hidden = true;
+    this.#mediaGroup = mediaGroup;
+    const playBtn = document.createElement("button");
+    playBtn.type = "button";
+    playBtn.className = "flv-btn";
+    playBtn.setAttribute("aria-label", "Play");
+    playBtn.title = "Play";
+    playBtn.innerHTML = ICONS.play;
+    playBtn.addEventListener("click", () => this.#togglePlay());
+    this.#playBtn = playBtn;
+    const timeLabel = document.createElement("span");
+    timeLabel.className = "flv-time";
+    timeLabel.textContent = "0:00 / 0:00";
+    this.#timeLabel = timeLabel;
+    const seek = document.createElement("input");
+    seek.type = "range";
+    seek.className = "flv-media-slider flv-seek";
+    seek.min = "0";
+    seek.max = "1000";
+    seek.step = "1";
+    seek.value = "0";
+    seek.setAttribute("aria-label", "Seek");
+    seek.addEventListener("input", () => this.#onSeekInput());
+    seek.addEventListener("change", () => {
+      this.#scrubbing = false;
+    });
+    this.#seek = seek;
+    const muteBtn = document.createElement("button");
+    muteBtn.type = "button";
+    muteBtn.className = "flv-btn";
+    muteBtn.setAttribute("aria-label", "Mute");
+    muteBtn.title = "Mute";
+    muteBtn.innerHTML = ICONS.volume;
+    muteBtn.addEventListener("click", () => this.#toggleMuted());
+    this.#muteBtn = muteBtn;
+    const volume = document.createElement("input");
+    volume.type = "range";
+    volume.className = "flv-media-slider flv-volume";
+    volume.min = "0";
+    volume.max = "100";
+    volume.step = "1";
+    volume.value = "100";
+    volume.setAttribute("aria-label", "Volume");
+    volume.addEventListener("input", () => this.#onVolumeInput());
+    this.#volume = volume;
+    mediaGroup.append(playBtn, timeLabel, seek, muteBtn, volume);
+    toolbar.append(mediaGroup);
+
     const sep = document.createElement("div");
     sep.className = "flv-sep";
+    const sepMedia = sep.cloneNode(true) as HTMLElement;
+    sepMedia.hidden = true;
+    this.#sepMedia = sepMedia;
+    toolbar.append(sepMedia);
     const indicator = document.createElement("span");
     indicator.className = "flv-page-indicator";
     indicator.hidden = true;
     this.#pageIndicator = indicator;
+    this.#sepTransform = sep.cloneNode(true) as HTMLElement;
+    this.#sepTransform.hidden = true;
+    this.#sepPager = sep.cloneNode(true) as HTMLElement;
+    this.#sepPager.hidden = true;
     for (const spec of BUTTONS) {
       // Indicator sits between the two pager buttons.
       if (spec.label === "Next page") {
@@ -233,13 +348,14 @@ export class Core {
       }
       toolbar.append(btn);
       if (spec.label === "Rotate") {
-        toolbar.append(sep.cloneNode(true));
+        toolbar.append(this.#sepTransform);
       }
       if (spec.label === "Next page") {
-        toolbar.append(sep.cloneNode(true));
+        toolbar.append(this.#sepPager);
       }
     }
 
+    this.#updateToolbarForKind(null);
     this.root.append(stage, progress, spinner, errorBox, toolbar);
     this.root.addEventListener("keydown", this.#keydown);
     document.addEventListener("fullscreenchange", this.#fullscreenChange);
@@ -252,8 +368,32 @@ export class Core {
     }
 
     if (typeof ResizeObserver !== "undefined") {
-      this.#resizeObserver = new ResizeObserver(() => {
-        if (this.#state === "ready") {
+      let armed = false;
+      let lastWidth = 0;
+      let lastHeight = 0;
+      this.#resizeObserver = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (!entry) {
+          return;
+        }
+        const { width, height } = entry.contentRect;
+        if (!armed) {
+          // Layout-establishment fires (0×0 → actual size) must not refit —
+          // the view already fits on creation, and a late one would clobber a
+          // user zoom. Arm on the first real size, react only to changes after.
+          if (width > 0 && height > 0) {
+            armed = true;
+            lastWidth = width;
+            lastHeight = height;
+          }
+          return;
+        }
+        if (width === lastWidth && height === lastHeight) {
+          return;
+        }
+        lastWidth = width;
+        lastHeight = height;
+        if (width > 0 && height > 0 && this.#state === "ready") {
           this.#view?.fit();
         }
       });
@@ -311,6 +451,8 @@ export class Core {
         this.#updatePageIndicator(page, total);
         this.emit("pagechange", { page, total });
       },
+      onFullscreenToggle: () => this.toggleFullscreen(),
+      mediaControls: { connect: this.#connectMedia },
     };
 
     void loadSource(source, {
@@ -332,12 +474,15 @@ export class Core {
           return;
         }
         this.#loaded = loaded;
+        this.#updateToolbarForKind(loaded.kind);
         this.#destroyView();
         try {
           this.#view =
             loaded.kind === "pdf"
               ? await createPdfView(this.#stage, loaded, callbacks)
-              : createImageView(this.#stage, loaded, callbacks);
+              : loaded.kind === "video" || loaded.kind === "audio"
+                ? createMediaView(this.#stage, loaded, callbacks)
+                : createImageView(this.#stage, loaded, callbacks);
         } catch (err) {
           if (isAbortError(err)) {
             return;
@@ -403,9 +548,12 @@ export class Core {
     }
     this.#errorBox.hidden = state !== "error";
     const interactive = state === "ready";
-    for (const btn of this.#toolbar.querySelectorAll<HTMLButtonElement>(".flv-btn")) {
-      if (btn.dataset.flvPermanent !== "true") {
-        btn.disabled = !interactive;
+    const controls = this.#toolbar.querySelectorAll<HTMLButtonElement | HTMLInputElement>(
+      ".flv-btn, .flv-media-slider",
+    );
+    for (const ctl of controls) {
+      if (ctl.dataset.flvPermanent !== "true") {
+        ctl.disabled = !interactive;
       }
     }
   }
@@ -419,6 +567,7 @@ export class Core {
     )) {
       btn.hidden = !isPdf;
     }
+    this.#sepPager.hidden = !isPdf;
     const prev = this.#button("Previous page");
     const next = this.#button("Next page");
     if (prev) {
@@ -429,24 +578,167 @@ export class Core {
     }
   }
 
+  /** Kind-aware toolbar: transform group, media group, pager group. */
+  #updateToolbarForKind(kind: FlvKind | null): void {
+    const showBtn = (label: string, visible: boolean) => {
+      const btn = this.#button(label);
+      if (btn) {
+        btn.hidden = !visible;
+      }
+    };
+    const isDoc = kind === "image" || kind === "pdf";
+    const isVideo = kind === "video";
+    const isMedia = isVideo || kind === "audio";
+    showBtn("Zoom in", isDoc);
+    showBtn("Zoom out", isDoc);
+    showBtn("Fit", isDoc || isVideo);
+    showBtn("Actual size", isDoc || isVideo);
+    showBtn("Rotate", isDoc);
+    this.#mediaGroup.hidden = !isMedia;
+    this.#sepMedia.hidden = !isVideo;
+    this.#sepTransform.hidden = !(isDoc || isVideo);
+  }
+
+  #connectMedia = (el: HTMLMediaElement): void => {
+    this.#mediaEl = el;
+    el.volume = savedVolume;
+    el.muted = savedMuted;
+    el.addEventListener("play", this.#syncMediaState);
+    el.addEventListener("pause", this.#syncMediaState);
+    el.addEventListener("timeupdate", this.#syncMediaState);
+    el.addEventListener("durationchange", this.#syncMediaState);
+    el.addEventListener("loadedmetadata", this.#syncMediaState);
+    el.addEventListener("volumechange", () => {
+      savedVolume = el.volume;
+      savedMuted = el.muted;
+      this.#syncMediaState();
+    });
+    this.#syncMediaState();
+  };
+
+  #syncMediaState = (): void => {
+    const el = this.#mediaEl;
+    if (!el) {
+      return;
+    }
+    const duration = el.duration;
+    const finite = typeof duration === "number" && Number.isFinite(duration) && duration > 0;
+    this.#playBtn.innerHTML = el.paused ? ICONS.play : ICONS.pause;
+    this.#playBtn.setAttribute("aria-label", el.paused ? "Play" : "Pause");
+    this.#playBtn.title = el.paused ? "Play" : "Pause";
+    const current = formatMediaTime(el.currentTime);
+    this.#timeLabel.textContent = finite ? `${current} / ${formatMediaTime(duration)}` : current;
+    this.#seek.disabled = !finite;
+    if (!this.#scrubbing && finite) {
+      this.#seek.value = String(Math.round((el.currentTime / duration) * 1000));
+    }
+    const muted = el.muted || el.volume === 0;
+    this.#muteBtn.innerHTML = muted ? ICONS.volumeMuted : ICONS.volume;
+    this.#muteBtn.setAttribute("aria-label", muted ? "Unmute" : "Mute");
+    this.#muteBtn.title = muted ? "Unmute" : "Mute";
+    this.#volume.value = String(Math.round(el.volume * 100));
+  };
+
+  #togglePlay(): void {
+    const el = this.#mediaEl;
+    if (!el) {
+      return;
+    }
+    if (el.paused) {
+      void el.play().catch(() => {});
+    } else {
+      el.pause();
+    }
+    this.#syncMediaState();
+  }
+
+  #onSeekInput(): void {
+    const el = this.#mediaEl;
+    if (!el) {
+      return;
+    }
+    this.#scrubbing = true;
+    const duration = el.duration;
+    if (Number.isFinite(duration) && duration > 0) {
+      el.currentTime = (this.#seek.valueAsNumber / 1000) * duration;
+    }
+    this.#syncMediaState();
+  }
+
+  #toggleMuted(): void {
+    const el = this.#mediaEl;
+    if (!el) {
+      return;
+    }
+    el.muted = !el.muted;
+    this.#syncMediaState();
+  }
+
+  #onVolumeInput(): void {
+    const el = this.#mediaEl;
+    if (!el) {
+      return;
+    }
+    el.volume = this.#volume.valueAsNumber / 100;
+    if (el.volume > 0 && el.muted) {
+      el.muted = false;
+    }
+    savedVolume = el.volume;
+    savedMuted = el.muted;
+    this.#syncMediaState();
+  }
+
+  #seekBy(sec: number): void {
+    const el = this.#mediaEl;
+    if (!el) {
+      return;
+    }
+    const duration = el.duration;
+    if (!Number.isFinite(duration) || duration <= 0) {
+      return;
+    }
+    el.currentTime = Math.min(duration, Math.max(0, el.currentTime + sec));
+    this.#syncMediaState();
+  }
+
+  #volumeBy(delta: number): void {
+    const el = this.#mediaEl;
+    if (!el) {
+      return;
+    }
+    el.volume = Math.min(1, Math.max(0, Math.round((el.volume + delta) * 100) / 100));
+    this.#syncMediaState();
+  }
+
   #destroyView(): void {
+    this.#mediaEl = null;
+    this.#scrubbing = false;
     this.#view?.destroy();
     this.#view = null;
     this.#stage.replaceChildren();
   }
 
   download(): void {
-    if (!this.#loaded) {
+    const loaded = this.#loaded;
+    if (!loaded) {
       return;
     }
-    const url = URL.createObjectURL(this.#loaded.blob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = suggestFilename(this.#loaded);
+    if (loaded.blob) {
+      const url = URL.createObjectURL(loaded.blob);
+      a.href = url;
+      // Note: for cross-origin streaming URLs the download attribute is
+      // ignored by browsers and the media opens instead — acceptable for v1.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } else if (loaded.url) {
+      a.href = loaded.url;
+    } else {
+      return;
+    }
+    a.download = suggestFilename(loaded);
     document.body.append(a);
     a.click();
     a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   toggleFullscreen(): void {

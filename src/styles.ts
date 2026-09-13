@@ -71,6 +71,14 @@ img.flv-media {
 canvas.flv-media {
   box-shadow: var(--flv-shadow);
 }
+video.flv-media {
+  box-shadow: var(--flv-shadow);
+  background: #000;
+}
+/* Native controls follow the dark viewer chrome. */
+.flv-media {
+  color-scheme: dark;
+}
 .flv-toolbar {
   position: absolute;
   left: 50%;
@@ -144,6 +152,74 @@ canvas.flv-media {
   font-variant-numeric: tabular-nums;
   user-select: none;
   white-space: nowrap;
+}
+.flv-media-group {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.flv-time {
+  flex: none;
+  font-size: 12px;
+  color: rgba(242, 242, 242, 0.8);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  user-select: none;
+}
+.flv-media-slider {
+  flex: 1 1 120px;
+  min-width: 72px;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--flv-accent);
+  cursor: pointer;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.flv-media-slider:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.flv-volume {
+  flex: 0 1 64px;
+  min-width: 48px;
+}
+.flv-audio-card {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: min(420px, calc(100% - 48px));
+  padding: 28px 36px;
+  border-radius: var(--flv-radius);
+  background: var(--flv-bg);
+  box-shadow: var(--flv-shadow);
+  text-align: center;
+}
+.flv-audio-card svg {
+  width: 44px;
+  height: 44px;
+  stroke: var(--flv-accent);
+  fill: none;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.flv-audio-name {
+  font-weight: 600;
+  word-break: break-word;
+}
+.flv-audio-duration {
+  font-size: 12px;
+  color: rgba(242, 242, 242, 0.6);
+  font-variant-numeric: tabular-nums;
 }
 .flv-progress {
   position: absolute;

@@ -1,9 +1,10 @@
 # flviewer
 
-Pure client-side file preview for the browser. Images & PDF, with a minimal built-in UI.
+Pure client-side file preview for the browser. Images, PDF, video & audio, with a minimal built-in UI.
 
 - **Zero framework dependencies** — vanilla factory API plus a `<fl-viewer>` web component
 - **Overlay & Embed** — fullscreen modal via `open()`, or render inside any container via `mount()`
+- **Streaming media** — video/audio URL sources play directly from the URL (Range-request seeking, no full download)
 - **Lazy pdf.js** — image previews never download the PDF engine; on first PDF preview the viewer loads a ~157 KB gz engine chunk plus a ~357 KB gz worker chunk. No consumer configuration required, works in bundled apps, CDN-direct and raw-ESM contexts
 - **Typed errors** — failures resolve to `{ code, message, cause? }` events, never exceptions
 
@@ -67,6 +68,8 @@ One event stream, two views — `controller.on(name, cb)` and bubbled `flv:<name
 | `close`      | `{ by: 'user' \| 'api' }` | Overlay closed (Esc / button / `close()`) |
 | `pagechange` | `{ page, total }`         | visible PDF page changed                  |
 | `zoom`       | `{ scale }`               | magnification changed                     |
+
+`kind` is one of `image`, `pdf`, `video`, `audio`.
 
 Error codes: `fetch-error`, `unsupported-type`, `encrypted-pdf`, `render-error`, `aborted`.
 

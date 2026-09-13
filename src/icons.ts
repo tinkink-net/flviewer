@@ -22,4 +22,18 @@ export const ICONS = {
   ),
   close: I('<path d="M5 5l10 10M15 5 5 15"/>'),
   error: I('<circle cx="10" cy="10" r="7.5"/><path d="M10 6v5"/><path d="M10 13.8v.2"/>'),
+  // Media controls (filled glyphs; the toolbar CSS strokes outline icons).
+  play: I('<path d="M7 4.5v11l9-5.5z" fill="currentColor" stroke="none"/>'),
+  pause: I(
+    '<path d="M6.5 4.5h2.7v11H6.5zM10.8 4.5h2.7v11h-2.7z" fill="currentColor" stroke="none"/>',
+  ),
+  volume: I(
+    '<path d="M4 7.8v4.4h2.6L11 16V4L6.6 7.8z" fill="currentColor" stroke="none"/><path d="M13.2 7.6a3.4 3.4 0 0 1 0 4.8"/><path d="M15.3 5.5a6.4 6.4 0 0 1 0 9"/>',
+  ),
+  volumeMuted: I(
+    '<path d="M4 7.8v4.4h2.6L11 16V4L6.6 7.8z" fill="currentColor" stroke="none"/><path d="M13.2 8.2l4 4M17.2 8.2l-4 4"/>',
+  ),
+  music: I(
+    '<path d="M8.2 14.6V5.2l7.6-1.6v9.2"/><circle cx="6" cy="14.8" r="2.2"/><circle cx="13.6" cy="13" r="2.2"/>',
+  ),
 };

@@ -1,17 +1,23 @@
-import { detectKind } from "./detect";
+import { AUDIO_EXTENSIONS, detectKind, extensionOf, VIDEO_EXTENSIONS } from "./detect";
 import { createFlvError, FlvAbortError, isAbortError } from "./errors";
 import type { FlvKind, Source } from "./types";
 
 export interface LoadedSource {
-  blob: Blob;
+  /** Full payload. Absent for streaming media sources (played from `url`). */
+  blob?: Blob;
   kind: FlvKind;
   /** Filename for display/download, when derivable. */
   name?: string;
+  /** Direct-play URL — present for streaming media sources (video/audio). */
+  url?: string;
+  /** Content-Type when known without a payload (streaming sources). */
+  mime?: string;
 }
 
 export type ProgressCallback = (loaded: number, total: number | null) => void;
 
 const HEAD_BYTES = 64;
+const SNIFF_RANGE = "bytes=0-63";
 
 function nameFromUrl(url: string): string {
   const path = url.split(/[?#]/)[0] ?? "";
@@ -27,17 +33,31 @@ function extensionForKind(kind: FlvKind, mime: string): string {
   if (kind === "pdf") {
     return "pdf";
   }
-  const sub = mime.replace("image/", "").split(";")[0]?.trim();
+  const fallback = kind === "video" ? "vid" : kind === "audio" ? "aud" : "img";
   const table: Record<string, string> = {
     jpeg: "jpg",
     "svg+xml": "svg",
     "vnd.microsoft.icon": "ico",
     "x-icon": "ico",
+    // video
+    quicktime: "mov",
+    "x-matroska": "mkv",
+    // audio
+    "x-wav": "wav",
+    wave: "wav",
+    aac: "aac",
+    flac: "flac",
+    opus: "opus",
+    mp3: "mp3",
+    // ambiguous subs
+    ...(kind === "video" ? { mpeg: "mpg", ogg: "ogv", mp4: "mp4", webm: "webm" } : null),
+    ...(kind === "audio" ? { mp4: "m4a", webm: "weba", ogg: "ogg", mpeg: "mp3" } : null),
   };
+  const sub = (mime.split(";")[0] ?? "").trim().replace(/^(image|video|audio)\//, "");
   if (!sub) {
-    return "img";
+    return fallback;
   }
-  return table[sub] ?? (sub.includes("/") ? "img" : sub);
+  return table[sub] ?? (sub.includes("/") ? fallback : sub);
 }
 
 export function suggestFilename(loaded: LoadedSource): string {
@@ -46,7 +66,7 @@ export function suggestFilename(loaded: LoadedSource): string {
     return name;
   }
   const base = name && name.trim() ? name.trim() : "download";
-  return `${base}.${extensionForKind(loaded.kind, loaded.blob.type || "")}`;
+  return `${base}.${extensionForKind(loaded.kind, loaded.mime ?? loaded.blob?.type ?? "")}`;
 }
 
 async function blobFromResponse(
@@ -90,37 +110,163 @@ async function headBytes(blob: Blob): Promise<Uint8Array> {
   return new Uint8Array(buf);
 }
 
+async function fetchResponse(
+  url: string,
+  requestInit: RequestInit | undefined,
+  signal: AbortSignal | undefined,
+): Promise<Response> {
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...requestInit,
+      signal: requestInit?.signal ?? signal,
+    });
+  } catch (err) {
+    if (isAbortError(err) || signal?.aborted) {
+      throw new FlvAbortError();
+    }
+    throw createFlvError("fetch-error", undefined, err);
+  }
+  if (!response.ok) {
+    throw createFlvError(
+      "fetch-error",
+      `The file could not be downloaded (HTTP ${response.status}).`,
+    );
+  }
+  return response;
+}
+
+/**
+ * True when requestInit carries nothing a `<video>/<audio src>` element
+ * cannot reproduce. Custom headers, methods or credentials modes force the
+ * fetch-to-blob path, because native media elements cannot attach them.
+ */
+function isStreamableRequestInit(requestInit?: RequestInit): boolean {
+  if (!requestInit) {
+    return true;
+  }
+  return (
+    requestInit.method === undefined &&
+    requestInit.body === undefined &&
+    requestInit.headers === undefined &&
+    requestInit.credentials === undefined &&
+    requestInit.integrity === undefined &&
+    requestInit.mode === undefined &&
+    requestInit.referrer === undefined &&
+    requestInit.cache === undefined &&
+    requestInit.redirect === undefined
+  );
+}
+
+type SniffResult =
+  | { action: "stream"; loaded: LoadedSource }
+  | { action: "use"; blob: Blob }
+  | { action: "full" };
+
+/**
+ * Streaming decision for URL sources (see the Phase-1 design note):
+ * a ranged GET (Range: bytes=0-63) sniffs Content-Type + magic bytes so that
+ * HTTP failures still surface as `fetch-error` and detection keeps its
+ * MIME → extension → magic order. A 206 response for a video/audio kind is
+ * played directly from the URL (Range-request seeking, no full download);
+ * anything else falls through to the regular full fetch.
+ */
+async function sniffUrlSource(
+  url: string,
+  name: string,
+  requestInit: RequestInit | undefined,
+  signal: AbortSignal | undefined,
+): Promise<SniffResult> {
+  const headers = new Headers(requestInit?.headers);
+  headers.set("Range", SNIFF_RANGE);
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...requestInit,
+      headers,
+      signal: requestInit?.signal ?? signal,
+    });
+  } catch (err) {
+    if (isAbortError(err) || signal?.aborted) {
+      throw new FlvAbortError();
+    }
+    throw createFlvError("fetch-error", undefined, err);
+  }
+  if (!response.ok) {
+    if (response.status === 416) {
+      // Server rejects ranges — fall back to a plain full request.
+      void response.body?.cancel().catch(() => {});
+      return { action: "full" };
+    }
+    throw createFlvError(
+      "fetch-error",
+      `The file could not be downloaded (HTTP ${response.status}).`,
+    );
+  }
+  if (response.status !== 206) {
+    // Range ignored (200): the body is the whole file — use it as-is.
+    const blob = await blobFromResponse(response, signal, () => {});
+    return { action: "use", blob };
+  }
+  let bytes: Uint8Array;
+  try {
+    bytes = new Uint8Array(await response.arrayBuffer());
+  } catch (err) {
+    if (isAbortError(err) || signal?.aborted) {
+      throw new FlvAbortError();
+    }
+    throw createFlvError("fetch-error", "The file could not be downloaded.", err);
+  }
+  const kind = detectKind({
+    mime: response.headers.get("content-type"),
+    name,
+    bytes: bytes.slice(0, HEAD_BYTES),
+  });
+  if (kind === "video" || kind === "audio") {
+    return {
+      action: "stream",
+      loaded: {
+        kind,
+        name,
+        url,
+        mime: response.headers.get("content-type") ?? undefined,
+      },
+    };
+  }
+  // Non-media kind: only the head was fetched — download in full.
+  void response.body?.cancel().catch(() => {});
+  return { action: "full" };
+}
+
 export async function loadSource(
   source: Source,
   options?: { requestInit?: RequestInit; signal?: AbortSignal; onProgress?: ProgressCallback },
 ): Promise<LoadedSource> {
   const signal = options?.signal;
   const onProgress = options?.onProgress ?? (() => {});
-  let blob: Blob;
+  let blob: Blob | undefined;
   let name: string | undefined;
 
   if (typeof source === "string" || source instanceof URL) {
     const url = typeof source === "string" ? source : source.href;
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        ...options?.requestInit,
-        signal: options?.requestInit?.signal ?? signal,
-      });
-    } catch (err) {
-      if (isAbortError(err) || signal?.aborted) {
-        throw new FlvAbortError();
-      }
-      throw createFlvError("fetch-error", undefined, err);
-    }
-    if (!response.ok) {
-      throw createFlvError(
-        "fetch-error",
-        `The file could not be downloaded (HTTP ${response.status}).`,
-      );
-    }
     name = nameFromUrl(url);
-    blob = await blobFromResponse(response, signal, onProgress);
+    const ext = extensionOf(name);
+    const sniffable =
+      isStreamableRequestInit(options?.requestInit) &&
+      (ext === "" || VIDEO_EXTENSIONS.has(ext) || AUDIO_EXTENSIONS.has(ext));
+    if (sniffable) {
+      const sniffed = await sniffUrlSource(url, name, options?.requestInit, signal);
+      if (sniffed.action === "stream") {
+        return sniffed.loaded;
+      }
+      if (sniffed.action === "use") {
+        blob = sniffed.blob;
+      }
+    }
+    if (!blob) {
+      const response = await fetchResponse(url, options?.requestInit, signal);
+      blob = await blobFromResponse(response, signal, onProgress);
+    }
   } else if (source instanceof Blob) {
     blob = source;
     if (source instanceof File) {

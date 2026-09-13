@@ -8,13 +8,13 @@
   <body>
     <main>
       <h1>flviewer playground</h1>
-      <p>Pure client-side file preview: images & PDF. Double as manual QA rig.</p>
+      <p>Pure client-side file preview: images, PDF, video & audio. Double as manual QA rig.</p>
 
       <h2>Custom file</h2>
       <p>
         <label>
-          Pick a file (PDF or image):
-          <input type="file" id="custom-file" accept="application/pdf,image/*" />
+          Pick a file (PDF, image, video or audio):
+          <input type="file" id="custom-file" accept="application/pdf,image/*,video/*,audio/*" />
         </label>
         <button data-demo="custom-open" disabled>open in overlay</button>
         <button data-demo="custom-mount" disabled>mount below</button>
@@ -24,6 +24,9 @@
       <button data-demo="open-png">open PNG</button>
       <button data-demo="open-jpg">open JPG</button>
       <button data-demo="open-pdf">open PDF (lazy pdf.js)</button>
+      <button data-demo="open-mp4">open MP4</button>
+      <button data-demo="open-webm">open WebM</button>
+      <button data-demo="open-mp3">open MP3</button>
       <button data-demo="open-url">open by URL</button>
       <button data-demo="open-broken">open unsupported</button>
 
@@ -32,6 +35,7 @@
       <div>
         <button data-demo="mount-pdf">mount PDF</button>
         <button data-demo="mount-png">mount PNG</button>
+        <button data-demo="mount-mp4">mount MP4</button>
         <button data-demo="swap">controller.update()</button>
       </div>
 
@@ -40,6 +44,7 @@
       <div>
         <button data-demo="wc-pdf">set source = PDF</button>
         <button data-demo="wc-png">set source = PNG</button>
+        <button data-demo="wc-mp4">set source = MP4</button>
       </div>
 
       <script type="module" src="/main.ts"></script>

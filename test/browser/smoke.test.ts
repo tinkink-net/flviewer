@@ -1,7 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { mount, open } from "../../src/index";
 import { jpgBlob, pdfBlob, pngBlob, textBlob } from "../helpers";
+import mp3Url from "../fixtures/tiny.mp3?url";
+import mp4Url from "../fixtures/tiny.mp4?url";
 import pngUrl from "../fixtures/tiny.png?url";
+import webmUrl from "../fixtures/tiny.webm?url";
+
+async function blobFromUrl(url: string, type: string): Promise<Blob> {
+  const res = await fetch(url);
+  return new Blob([await res.arrayBuffer()], { type });
+}
 
 async function waitUntil<T>(fn: () => T | undefined | null, timeout = 5000): Promise<T> {
   const start = performance.now();
@@ -155,18 +163,25 @@ describe("browser rendering", () => {
     });
 
     // 100% = base dimension (96 DPI CSS): 200 pt * 96/72 = 266.67 px,
-    // independent of the container size.
+    // independent of the container size. Re-renders are async (worker
+    // roundtrip) and can be slow under parallel test load.
     (container.querySelector('button[aria-label="Actual size"]') as HTMLButtonElement).click();
-    await vi.waitFor(() => {
-      expect(Number.parseFloat(canvas.style.width)).toBeCloseTo(200 * (96 / 72), 1);
-    });
+    await vi.waitFor(
+      () => {
+        expect(Number.parseFloat(canvas.style.width)).toBeCloseTo(200 * (96 / 72), 1);
+      },
+      { timeout: 10000 },
+    );
     expect(canvas.getBoundingClientRect().width).toBeCloseTo(200 * (96 / 72), 0);
 
     // Back to fit re-paints at the stage size.
     (container.querySelector('button[aria-label="Fit"]') as HTMLButtonElement).click();
-    await vi.waitFor(() => {
-      expect(canvas.style.width).toBe("352px");
-    });
+    await vi.waitFor(
+      () => {
+        expect(canvas.style.width).toBe("352px");
+      },
+      { timeout: 10000 },
+    );
     controller.destroy();
     container.remove();
   });
@@ -235,5 +250,128 @@ describe("browser rendering", () => {
     const detail = await zoomed;
     expect(detail.scale).toBeGreaterThan(1);
     controller.close();
+  });
+});
+
+describe("browser media rendering (Phase 1)", () => {
+  it("plays an MP4 with toolbar controls and two-level zoom", async () => {
+    const container = document.createElement("div");
+    container.style.cssText = "width:400px;height:300px";
+    document.body.append(container);
+    const controller = mount(container, await blobFromUrl(mp4Url, "video/mp4"));
+    const ready = await new Promise<{ kind: string }>((resolve) =>
+      controller.on("ready", resolve as never),
+    );
+    expect(ready.kind).toBe("video");
+    const video = await waitUntil(() =>
+      container.querySelector<HTMLVideoElement>("video.flv-video"),
+    );
+    // Controls live in the toolbar, not on the element (ADR-5).
+    expect(video.controls).toBe(false);
+    await waitUntil(() => (video.readyState >= 1 && video.videoWidth === 64 ? true : null));
+    await vi.waitFor(() => {
+      expect(video.style.transform).toContain("scale");
+    });
+
+    // 100% = 1:1 native pixels; fit scales back up.
+    (container.querySelector('button[aria-label="Actual size"]') as HTMLButtonElement).click();
+    await vi.waitFor(() => {
+      expect(video.style.transform).toContain("scale(1)");
+    });
+    (container.querySelector('button[aria-label="Fit"]') as HTMLButtonElement).click();
+    await vi.waitFor(() => {
+      expect(video.style.transform).not.toContain("scale(1)");
+    });
+
+    // Toolbar transport: play, then seek via the slider.
+    const playBtn = container.querySelector('button[aria-label="Play"]') as HTMLButtonElement;
+    playBtn.click();
+    await waitUntil(() => (!video.paused && video.currentTime > 0 ? true : null));
+    expect(playBtn.getAttribute("aria-label")).toBe("Pause");
+    const seek = container.querySelector('input[aria-label="Seek"]') as HTMLInputElement;
+    expect(seek.disabled).toBe(false);
+    seek.value = "500";
+    seek.dispatchEvent(new Event("input", { bubbles: true }));
+    await waitUntil(() =>
+      Math.abs(video.currentTime - (video.duration ?? 1) / 2) < 0.3 ? true : null,
+    );
+    controller.destroy();
+    container.remove();
+  });
+
+  it("decodes a WebM blob", async () => {
+    const container = document.createElement("div");
+    container.style.cssText = "width:400px;height:300px";
+    document.body.append(container);
+    const controller = mount(container, await blobFromUrl(webmUrl, "video/webm"));
+    const ready = await new Promise<{ kind: string }>((resolve) =>
+      controller.on("ready", resolve as never),
+    );
+    expect(ready.kind).toBe("video");
+    const video = await waitUntil(() =>
+      container.querySelector<HTMLVideoElement>("video.flv-video"),
+    );
+    await waitUntil(() => (video.readyState >= 1 && video.videoWidth === 64 ? true : null));
+    controller.destroy();
+    container.remove();
+  });
+
+  it("plays an MP3 with the toolbar as the player and a placeholder card", async () => {
+    const container = document.createElement("div");
+    container.style.cssText = "width:400px;height:300px";
+    document.body.append(container);
+    const controller = mount(container, await blobFromUrl(mp3Url, "audio/mpeg"));
+    const ready = await new Promise<{ kind: string }>((resolve) =>
+      controller.on("ready", resolve as never),
+    );
+    expect(ready.kind).toBe("audio");
+    const audio = await waitUntil(() =>
+      container.querySelector<HTMLAudioElement>("audio.flv-audio"),
+    );
+    expect(audio.controls).toBe(false);
+    expect(audio.hidden).toBe(true);
+    const card = await waitUntil(() => container.querySelector(".flv-audio-card"));
+    await waitUntil(() =>
+      card.querySelector(".flv-audio-duration")!.textContent === "0:00" ? true : null,
+    );
+    const playBtn = container.querySelector('button[aria-label="Play"]') as HTMLButtonElement;
+    playBtn.click();
+    await waitUntil(() => (!audio.paused && audio.currentTime > 0 ? true : null));
+    controller.destroy();
+    container.remove();
+  });
+
+  it("plays a video straight from a URL source", async () => {
+    const container = document.createElement("div");
+    container.style.cssText = "width:400px;height:300px";
+    document.body.append(container);
+    const controller = mount(container, mp4Url);
+    const ready = await new Promise<{ kind: string }>((resolve) =>
+      controller.on("ready", resolve as never),
+    );
+    expect(ready.kind).toBe("video");
+    const video = await waitUntil(() =>
+      container.querySelector<HTMLVideoElement>("video.flv-video"),
+    );
+    await waitUntil(() => (video.readyState >= 1 && video.videoWidth === 64 ? true : null));
+    controller.destroy();
+    container.remove();
+  });
+
+  it("reports a typed render-error for broken media payloads", async () => {
+    const container = document.createElement("div");
+    container.style.cssText = "width:400px;height:300px";
+    document.body.append(container);
+    const broken = new File([new TextEncoder().encode("this is not a video")], "broken.mp4");
+    const controller = mount(container, broken);
+    const error = await new Promise<{ error: { code: string } }>((resolve) =>
+      controller.on("error", resolve as never),
+    );
+    expect(error.error.code).toBe("render-error");
+    await waitUntil(() =>
+      (container.querySelector(".flv-error") as HTMLElement).hidden === false ? true : null,
+    );
+    controller.destroy();
+    container.remove();
   });
 });

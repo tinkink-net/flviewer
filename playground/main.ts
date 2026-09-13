@@ -1,8 +1,11 @@
 import { open, mount } from "../src/index";
 import type { FlViewerElement } from "../src/index";
-import pngUrl from "../test/fixtures/tiny.png?url";
 import jpgUrl from "../test/fixtures/tiny.jpg?url";
+import mp3Url from "../test/fixtures/tiny.mp3?url";
+import mp4Url from "../test/fixtures/tiny.mp4?url";
 import pdfUrl from "../test/fixtures/two-page.pdf?url";
+import pngUrl from "../test/fixtures/tiny.png?url";
+import webmUrl from "../test/fixtures/tiny.webm?url";
 
 const wc = document.querySelector<FlViewerElement>("#wc")!;
 
@@ -43,6 +46,15 @@ document.addEventListener("click", async (ev) => {
     case "open-pdf":
       open(pdfUrl, { title: "two-page.pdf" });
       break;
+    case "open-mp4":
+      open(mp4Url, { title: "tiny.mp4" });
+      break;
+    case "open-webm":
+      open(webmUrl, { title: "tiny.webm" });
+      break;
+    case "open-mp3":
+      open(mp3Url, { title: "tiny.mp3" });
+      break;
     case "open-url":
       open(new URL(pngUrl, location.href));
       break;
@@ -55,6 +67,9 @@ document.addEventListener("click", async (ev) => {
     case "mount-png":
       embedController.update(pngUrl);
       break;
+    case "mount-mp4":
+      embedController.update(mp4Url);
+      break;
     case "swap":
       embedController.update(jpgUrl);
       break;
@@ -63,6 +78,9 @@ document.addEventListener("click", async (ev) => {
       break;
     case "wc-png":
       wc.source = pngUrl;
+      break;
+    case "wc-mp4":
+      wc.source = mp4Url;
       break;
   }
 });

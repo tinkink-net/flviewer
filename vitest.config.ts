@@ -19,7 +19,13 @@ export default defineConfig({
           setupFiles: ["test/setup.ts"],
           browser: {
             enabled: true,
-            provider: playwright(),
+            // Synthetic clicks carry no user activation; without this the
+            // autoplay policy rejects programmatic play() in tests.
+            provider: playwright({
+              launchOptions: {
+                args: ["--autoplay-policy=no-user-gesture-required"],
+              },
+            }),
             instances: [{ browser: "chromium" }],
           },
         },

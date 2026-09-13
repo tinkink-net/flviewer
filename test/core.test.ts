@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mount, open } from "../src/index";
 import { injectFlvStyles } from "../src/stylesheet";
-import { flush, jpgBlob, pngBlob, textBlob } from "./helpers";
+import { flush, jpgBlob, pngBlob, textBlob, wavBlob, wavBytes } from "./helpers";
 
 describe("mount (Embed)", () => {
   it("renders toolbar and fires ready for a PNG blob", async () => {
@@ -108,6 +108,133 @@ describe("mount (Embed)", () => {
     });
     await seen;
     expect(seen).toBeTruthy();
+    controller.destroy();
+  });
+});
+
+describe("media views (video/audio)", () => {
+  it("renders an audio blob with toolbar media controls and a placeholder card", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const controller = mount(container, wavBlob());
+    const detail = (await new Promise((resolve) => controller.on("ready", resolve))) as {
+      kind: string;
+    };
+    expect(detail.kind).toBe("audio");
+    const root = container.querySelector(".flv-root")!;
+    const audio = root.querySelector("audio.flv-audio") as HTMLAudioElement;
+    expect(audio).toBeTruthy();
+    // Controls live in the toolbar (ADR-5), the element stays invisible.
+    expect(audio.controls).toBe(false);
+    expect(audio.hidden).toBe(true);
+    expect(root.querySelector(".flv-audio-card")).toBeTruthy();
+    expect(root.querySelector(".flv-audio-name")!.textContent).toBe("Audio");
+    // Toolbar: media group visible, transforms and pager hidden.
+    expect(root.querySelector('button[aria-label="Play"]')).toBeTruthy();
+    expect(root.querySelector('input[aria-label="Seek"]')).toBeTruthy();
+    expect(root.querySelector('input[aria-label="Volume"]')).toBeTruthy();
+    expect((root.querySelector('button[aria-label="Zoom in"]') as HTMLElement).hidden).toBe(true);
+    expect((root.querySelector('button[aria-label="Rotate"]') as HTMLElement).hidden).toBe(true);
+    expect((root.querySelector('button[aria-label="Next page"]') as HTMLElement).hidden).toBe(true);
+    controller.destroy();
+  });
+
+  it("routes video kinds to a video element with fit/100% but no rotate", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const file = new File([wavBytes()], "clip.mp4", { type: "" });
+    const controller = mount(container, file);
+    const detail = (await new Promise((resolve) => controller.on("ready", resolve))) as {
+      kind: string;
+    };
+    expect(detail.kind).toBe("video");
+    const root = container.querySelector(".flv-root")!;
+    const video = root.querySelector("video.flv-video") as HTMLVideoElement;
+    expect(video).toBeTruthy();
+    expect(video.controls).toBe(false);
+    expect((root.querySelector('button[aria-label="Play"]') as HTMLElement).hidden).toBe(false);
+    expect((root.querySelector('button[aria-label="Fit"]') as HTMLElement).hidden).toBe(false);
+    expect((root.querySelector('button[aria-label="Actual size"]') as HTMLElement).hidden).toBe(
+      false,
+    );
+    expect((root.querySelector('button[aria-label="Zoom in"]') as HTMLElement).hidden).toBe(true);
+    expect((root.querySelector('button[aria-label="Rotate"]') as HTMLElement).hidden).toBe(true);
+    controller.destroy();
+  });
+
+  it("toggles playback from the toolbar play button", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const controller = mount(container, wavBlob());
+    await new Promise((resolve) => controller.on("ready", resolve));
+    const playBtn = container.querySelector('button[aria-label="Play"]') as HTMLButtonElement;
+    playBtn.click();
+    const audio = container.querySelector("audio.flv-audio") as HTMLAudioElement;
+    expect(audio.paused).toBe(false);
+    expect(playBtn.getAttribute("aria-label")).toBe("Pause");
+    playBtn.click();
+    expect(audio.paused).toBe(true);
+    expect(playBtn.getAttribute("aria-label")).toBe("Play");
+    controller.destroy();
+  });
+
+  it("space toggles playback, arrows seek and mute key silences", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const controller = mount(container, wavBlob());
+    await new Promise((resolve) => controller.on("ready", resolve));
+    const root = container.querySelector(".flv-root") as HTMLElement;
+    const audio = container.querySelector("audio.flv-audio") as HTMLAudioElement;
+    const key = (key: string) =>
+      root.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+    key(" ");
+    expect(audio.paused).toBe(false);
+    key(" ");
+    expect(audio.paused).toBe(true);
+    key("M");
+    expect(audio.muted).toBe(true);
+    controller.destroy();
+  });
+
+  it("surfaces media element failures as a typed render-error", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const controller = mount(container, wavBlob());
+    await new Promise((resolve) => controller.on("ready", resolve));
+    const errored = new Promise((resolve) => controller.on("error", resolve));
+    (container.querySelector("audio.flv-audio") as HTMLAudioElement).dispatchEvent(
+      new Event("error"),
+    );
+    const detail = (await errored) as { error: { code: string; message: string } };
+    expect(detail.error.code).toBe("render-error");
+    expect((container.querySelector(".flv-error") as HTMLElement).hidden).toBe(false);
+    controller.destroy();
+  });
+
+  it("emits zoom events for the two-level video zoom", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const file = new File([wavBytes()], "clip.mp4", { type: "" });
+    const controller = mount(container, file);
+    await new Promise((resolve) => controller.on("ready", resolve));
+    const zoomed = new Promise((resolve) => controller.on("zoom", resolve));
+    (container.querySelector('button[aria-label="Actual size"]') as HTMLButtonElement).click();
+    const detail = (await zoomed) as { scale: number };
+    expect(detail.scale).toBe(1);
+    controller.destroy();
+  });
+
+  it("update() swaps an image for a video on the same instance", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const controller = mount(container, pngBlob());
+    await new Promise((resolve) => controller.on("ready", resolve));
+    const next = new Promise((resolve) => controller.on("ready", resolve));
+    controller.update(wavBlob());
+    const detail = (await next) as { kind: string };
+    expect(detail.kind).toBe("audio");
+    expect(container.querySelector("img.flv-img")).toBeNull();
+    expect(container.querySelector("audio.flv-audio")).toBeTruthy();
     controller.destroy();
   });
 });

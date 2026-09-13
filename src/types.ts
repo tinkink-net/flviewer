@@ -8,7 +8,7 @@ export interface SourceOptions {
   title?: string;
 }
 
-export type FlvKind = "image" | "pdf";
+export type FlvKind = "image" | "pdf" | "video" | "audio";
 
 export type FlvErrorCode =
   | "fetch-error"

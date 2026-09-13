@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadSource, suggestFilename } from "../src/source";
 import { createFlvError, FlvAbortError } from "../src/errors";
-import { jpgBytes, pdfBytes, pngBytes, textBlob } from "./helpers";
+import { ftypBytes, jpgBytes, pdfBytes, pngBytes, textBlob } from "./helpers";
 
 describe("loadSource — URL path", () => {
   beforeEach(() => {
@@ -25,8 +25,8 @@ describe("loadSource — URL path", () => {
     const loaded = await loadSource("https://x.test/pix/tiny.png");
     expect(loaded.kind).toBe("image");
     expect(loaded.name).toBe("tiny.png");
-    expect(loaded.blob.type).toBe("image/png");
-    expect(loaded.blob.size).toBe(pngBytes().byteLength);
+    expect(loaded.blob?.type).toBe("image/png");
+    expect(loaded.blob?.size).toBe(pngBytes().byteLength);
   });
 
   it("reports streaming progress", async () => {
@@ -83,6 +83,109 @@ describe("loadSource — URL path", () => {
     await expect(
       loadSource("https://x.test/x.png", { signal: controller.signal }),
     ).rejects.toBeInstanceOf(FlvAbortError);
+  });
+});
+
+describe("loadSource — streaming media URLs", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const mp4Head = ftypBytes("isom");
+
+  function stubFetch(impl: (url: string, init?: RequestInit) => Promise<Response>) {
+    const spy = vi.fn(impl);
+    vi.stubGlobal("fetch", spy);
+    return spy;
+  }
+
+  it("streams when the sniff response is 206 for a media kind", async () => {
+    const spy = stubFetch(
+      async () =>
+        new Response(mp4Head, {
+          status: 206,
+          headers: { "content-type": "video/mp4" },
+        }),
+    );
+    const loaded = await loadSource("https://x.test/v/clip.mp4");
+    expect(loaded.kind).toBe("video");
+    expect(loaded.url).toBe("https://x.test/v/clip.mp4");
+    expect(loaded.blob).toBeUndefined();
+    expect(loaded.mime).toBe("video/mp4");
+    expect(loaded.name).toBe("clip.mp4");
+    expect(spy).toHaveBeenCalledTimes(1);
+    const init = spy.mock.calls[0]?.[1] as RequestInit;
+    expect((init.headers as Headers).get("Range")).toBe("bytes=0-63");
+  });
+
+  it("streams extension-less URLs by Content-Type", async () => {
+    stubFetch(
+      async () => new Response(mp4Head, { status: 206, headers: { "content-type": "video/mp4" } }),
+    );
+    const loaded = await loadSource("https://x.test/f/42");
+    expect(loaded.kind).toBe("video");
+    expect(loaded.url).toBe("https://x.test/f/42");
+  });
+
+  it("falls back to a full fetch when the sniffed kind is not media", async () => {
+    const spy = stubFetch(async () => new Response("x", { status: 500 }));
+    spy.mockResolvedValueOnce(
+      new Response(pngBytes().slice(0, 16), {
+        status: 206,
+        headers: { "content-type": "image/png" },
+      }),
+    );
+    spy.mockResolvedValueOnce(
+      new Response(pngBytes(), { status: 200, headers: { "content-type": "image/png" } }),
+    );
+    const loaded = await loadSource("https://x.test/pix/img");
+    expect(loaded.kind).toBe("image");
+    expect(loaded.blob).toBeDefined();
+    expect(loaded.url).toBeUndefined();
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the blob path when Range is ignored (200)", async () => {
+    stubFetch(
+      async () => new Response(mp4Head, { status: 200, headers: { "content-type": "video/mp4" } }),
+    );
+    const loaded = await loadSource("https://x.test/v/clip.mp4");
+    expect(loaded.kind).toBe("video");
+    expect(loaded.blob).toBeDefined();
+    expect(loaded.url).toBeUndefined();
+  });
+
+  it("skips the sniff when requestInit has custom headers (auth cannot reach <video>)", async () => {
+    const spy = stubFetch(
+      async () => new Response(mp4Head, { status: 200, headers: { "content-type": "video/mp4" } }),
+    );
+    const loaded = await loadSource("https://x.test/v/clip.mp4", {
+      requestInit: { headers: { Authorization: "Bearer t" } },
+    });
+    expect(loaded.kind).toBe("video");
+    expect(loaded.blob).toBeDefined();
+    expect(loaded.url).toBeUndefined();
+    expect(spy).toHaveBeenCalledTimes(1);
+    const init = spy.mock.calls[0]?.[1] as RequestInit;
+    expect(init.headers).toEqual({ Authorization: "Bearer t" });
+  });
+
+  it("maps HTTP failure on a media URL to fetch-error", async () => {
+    stubFetch(async () => new Response("nope", { status: 404 }));
+    await expect(loadSource("https://x.test/v/clip.mp4")).rejects.toMatchObject({
+      code: "fetch-error",
+    });
+  });
+
+  it("falls back to a plain full request after 416", async () => {
+    const spy = stubFetch(
+      async () => new Response(mp4Head, { status: 200, headers: { "content-type": "video/mp4" } }),
+    );
+    spy.mockResolvedValueOnce(new Response("range not satisfiable", { status: 416 }));
+    const loaded = await loadSource("https://x.test/v/clip.mp4");
+    expect(loaded.kind).toBe("video");
+    expect(loaded.blob).toBeDefined();
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -144,6 +247,17 @@ describe("suggestFilename", () => {
     expect(suggestFilename({ blob: new Blob([], { type: "image/jpeg" }), kind: "image" })).toBe(
       "download.jpg",
     );
+  });
+
+  it("maps video/audio kinds to sensible extensions", () => {
+    expect(suggestFilename({ kind: "video", name: "noext", mime: "video/quicktime" })).toBe(
+      "noext.mov",
+    );
+    expect(suggestFilename({ kind: "video", mime: "video/mp4" })).toBe("download.mp4");
+    expect(suggestFilename({ kind: "video", mime: "video/webm" })).toBe("download.webm");
+    expect(suggestFilename({ kind: "audio", mime: "audio/mpeg" })).toBe("download.mp3");
+    expect(suggestFilename({ kind: "audio", mime: "audio/mp4" })).toBe("download.m4a");
+    expect(suggestFilename({ kind: "audio", name: "clip.flac" })).toBe("clip.flac");
   });
 });
 

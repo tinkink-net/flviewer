@@ -6,6 +6,12 @@ export interface PanZoomOptions {
   /** Margin around the media when fitting. */
   margin?: number;
   onZoom?: (scale: number) => void;
+  /**
+   * When false, no user-interaction listeners are registered (no wheel zoom,
+   * no drag pan, no double-click) — the transform is driven programmatically
+   * only, e.g. for media views with fixed fit/100% levels.
+   */
+  interactive?: boolean;
 }
 
 /**
@@ -35,8 +41,13 @@ export class PanZoom {
       maxScale: 8,
       margin: 24,
       onZoom: () => {},
+      interactive: true,
       ...opts,
     };
+
+    if (!this.#opts.interactive) {
+      return;
+    }
 
     const onWheel = (ev: WheelEvent) => {
       if (this.#opts.wheelMode === "ctrl" && !ev.ctrlKey && !ev.metaKey) {
