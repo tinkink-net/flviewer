@@ -151,10 +151,13 @@ export class PanZoom {
     if (this.#opts.dblclickZoom) {
       const onDblClick = (ev: MouseEvent) => {
         ev.preventDefault();
-        if (this.#scale > 2.001 || Math.abs(this.#scale - 2) < 0.25) {
+        // Toggle fit <-> 2x fit. Fitting may upscale small media, so a fixed
+        // 1x reference would make the toggle a silent no-op for them.
+        const fitRef = this.fitFactor();
+        if (this.#scale > fitRef * 1.001) {
           this.fit();
         } else {
-          this.#zoomAround(2, ev.clientX, ev.clientY);
+          this.#zoomAround(fitRef * 2, ev.clientX, ev.clientY);
         }
       };
       media.addEventListener("dblclick", onDblClick);
@@ -166,9 +169,27 @@ export class PanZoom {
     return this.stage.getBoundingClientRect();
   }
 
+  /**
+   * Zoom bounds relative to the fit reference. fit() always fills the stage
+   * (it may exceed the absolute maxScale for tiny media), so the user-zoom
+   * ceiling scales with it — otherwise a fit-upscaled image would sit at the
+   * cap with wheel zoom dead and clamped pan refusing to move it.
+   */
+  #effectiveMax(): number {
+    return this.#opts.maxScale * this.fitFactor();
+  }
+
+  #effectiveMin(): number {
+    return Math.min(this.#opts.minScale, this.fitFactor());
+  }
+
+  #clampScale(scale: number): number {
+    return Math.min(this.#effectiveMax(), Math.max(this.#effectiveMin(), scale));
+  }
+
   /** Absolute-scale setter used by PDF repaints: scale persists, pan recenters. */
   setScale(scale: number): void {
-    this.#scale = Math.min(this.#opts.maxScale, Math.max(this.#opts.minScale, scale));
+    this.#scale = this.#clampScale(scale);
     this.#tx = 0;
     this.#ty = 0;
     this.#apply();
@@ -246,12 +267,12 @@ export class PanZoom {
     return Math.min(availW / rotW, availH / rotH);
   }
 
-  /** Reset to fit (scale = fitFactor, centered, keeps rotation). */
+  /** Reset to fit — always fills the stage (keeps rotation, re-centers). */
   fit(): void {
     if (this.#mediaSize.width <= 0) {
       return;
     }
-    this.#scale = Math.min(this.#opts.maxScale, Math.max(this.#opts.minScale, this.fitFactor()));
+    this.#scale = this.fitFactor();
     this.#tx = 0;
     this.#ty = 0;
     this.#apply();
@@ -268,7 +289,7 @@ export class PanZoom {
 
   #zoomAround(newScale: number, clientX: number, clientY: number): void {
     const rect = this.#stageRect();
-    const clamped = Math.min(this.#opts.maxScale, Math.max(this.#opts.minScale, newScale));
+    const clamped = this.#clampScale(newScale);
     if (clamped === this.#scale) {
       return;
     }

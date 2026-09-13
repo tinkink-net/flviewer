@@ -409,17 +409,18 @@ describe("interaction modes (select/hand)", () => {
     drag(stage, from, [from[0] - 150, from[1] - 120]);
     expect(img.style.transform).toContain("translate(0px, 0px)");
 
-    // Zoom to max (8x → 512px): hand mode pans, clamped at the edges
-    // (±56px horizontally, ±106px vertically for this drag).
+    // Zoom past the stage (fit 3.94 → 4 clicks ≈ 9.61 → 615px): hand mode
+    // pans, clamped at the edges (±107.6px horizontally, -140px vertically
+    // for this drag is within the ±157.6px bound).
     for (let i = 0; i < 4; i++) {
       (container.querySelector('button[aria-label="Zoom in"]') as HTMLButtonElement).click();
     }
     await vi.waitFor(() => {
-      expect(img.style.transform).toContain("scale(8)");
+      expect(img.style.transform).toMatch(/scale\(9\.6/);
     });
     drag(stage, from, [from[0] - 180, from[1] - 140]);
     await vi.waitFor(() => {
-      expect(img.style.transform).toContain("translate(-56px, -106px)");
+      expect(img.style.transform).toMatch(/translate\(-107\.6\d*px, -140px\)/);
     });
     controller.destroy();
     container.remove();
@@ -443,12 +444,12 @@ describe("interaction modes (select/hand)", () => {
       (container.querySelector('button[aria-label="Zoom in"]') as HTMLButtonElement).click();
     }
     await vi.waitFor(() => {
-      expect(img.style.transform).toContain("scale(8)");
+      expect(img.style.transform).toMatch(/scale\(9\.6/);
     });
     // Hand mode (default): drag to a panned, clamped position.
     drag(stage, center, [center[0] - 180, center[1] - 140]);
     await vi.waitFor(() => {
-      expect(img.style.transform).toContain("translate(-56px, -106px)");
+      expect(img.style.transform).toMatch(/translate\(-107\.6\d*px, -140px\)/);
     });
 
     (container.querySelector('button[aria-label="Select mode"]') as HTMLButtonElement).click();
@@ -459,7 +460,9 @@ describe("interaction modes (select/hand)", () => {
 
     (container.querySelector('button[aria-label="Hand mode"]') as HTMLButtonElement).click();
     drag(stage, center, [center[0] + 180, center[1] + 140]);
-    expect(img.style.transform).not.toBe(frozen);
+    // Deltas accumulate from the panned position: (-107.6, -140) + (180, 140)
+    // = (72.4, 0) — within bounds, so no clamping on this drag.
+    expect(img.style.transform).toMatch(/translate\(72\.3\d*px, 0px\)/);
     controller.destroy();
     container.remove();
   });

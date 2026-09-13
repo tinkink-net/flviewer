@@ -69,18 +69,18 @@ describe("fit", () => {
     expect(pz2.totalScale).toBe(4.4);
   });
 
-  it("clamps upscale at maxScale", () => {
+  it("fills the stage regardless of maxScale (tiny media must fill)", () => {
     const pz2 = makePanZoom({ maxScale: 2 });
     pz2.setMediaSize(100, 80);
     pz2.fit();
-    expect(pz2.totalScale).toBe(2);
+    expect(pz2.totalScale).toBe(4.4);
   });
 
-  it("clamps downscale at minScale", () => {
+  it("fills the stage even below minScale (huge media must fit)", () => {
     const pz2 = makePanZoom({ minScale: 0.5 });
     pz2.setMediaSize(2000, 1600);
     pz2.fit();
-    expect(pz2.totalScale).toBe(0.5);
+    expect(pz2.totalScale).toBeCloseTo(0.22, 5);
   });
 
   it("centers the media (zero translation)", () => {
@@ -95,6 +95,38 @@ describe("fit", () => {
     const pz2 = makePanZoom();
     pz2.fit();
     expect(pz2.totalScale).toBe(1);
+  });
+});
+
+describe("zoom bounds relative to fit", () => {
+  it("caps user zoom at maxScale × fitFactor", () => {
+    const pz2 = makePanZoom({ maxScale: 2 });
+    pz2.setMediaSize(100, 80); // fit 4.4 → cap 8.8.
+    pz2.fit();
+    pz2.zoomBy(1000);
+    expect(pz2.totalScale).toBeCloseTo(8.8, 5);
+  });
+
+  it("lets fit-upscaled media zoom in (no dead wheel at an absolute cap)", () => {
+    const pz2 = makePanZoom();
+    pz2.setMediaSize(32, 32); // fit = 352/32 = 11 > default maxScale 8.
+    pz2.fit();
+    expect(pz2.totalScale).toBe(11);
+    pz2.zoomBy(1.5);
+    expect(pz2.totalScale).toBeCloseTo(16.5, 5);
+  });
+
+  it("never zooms out past minScale, nor past fit when fit is smaller", () => {
+    const pz2 = makePanZoom({ minScale: 0.5 });
+    pz2.setMediaSize(100, 80);
+    pz2.fit();
+    pz2.zoomBy(0.000001);
+    expect(pz2.totalScale).toBe(0.5);
+    // Huge media fits at 0.22 (< minScale): fit itself is the floor.
+    pz2.setMediaSize(2000, 1600);
+    pz2.fit();
+    pz2.zoomBy(0.000001);
+    expect(pz2.totalScale).toBeCloseTo(0.22, 5);
   });
 });
 
