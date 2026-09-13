@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mount, open } from "../src/index";
 import { injectFlvStyles } from "../src/stylesheet";
-import { flush, jpgBlob, pngBlob, textBlob, wavBlob, wavBytes } from "./helpers";
+import { flush, jpgBlob, junkBlob, pngBlob, wavBlob, wavBytes } from "./helpers";
 
 describe("mount (Embed)", () => {
   it("renders toolbar and fires ready for a PNG blob", async () => {
@@ -33,7 +33,7 @@ describe("mount (Embed)", () => {
   it("shows typed error state for unsupported types", async () => {
     const container = document.createElement("div");
     document.body.append(container);
-    const controller = mount(container, textBlob());
+    const controller = mount(container, junkBlob());
     const error = (await new Promise((resolve) => controller.on("error", resolve))) as {
       error: { code: string };
     };

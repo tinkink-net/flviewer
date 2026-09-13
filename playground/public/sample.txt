@@ -1,0 +1,13 @@
+Plain text view (sub-kind: plain)
+=================================
+
+Raw text, monospace, native scrolling and native selection.
+No highlighting, no PanZoom — the stage just scrolls.
+
+Truncation: text beyond 2 MB / 10,000 lines renders only the kept prefix
+with an in-view notice and a download hint; a `truncated` event fires.
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod
+tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim
+veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea
+commodo consequat. Duis aute irure dolor in reprehenderit in voluptate.

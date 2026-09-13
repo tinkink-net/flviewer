@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadSource, suggestFilename } from "../src/source";
 import { createFlvError, FlvAbortError } from "../src/errors";
-import { ftypBytes, jpgBytes, pdfBytes, pngBytes, textBlob } from "./helpers";
+import { ftypBytes, jpgBytes, pdfBytes, pngBytes } from "./helpers";
+import { junkBlob } from "./helpers";
 
 describe("loadSource — URL path", () => {
   beforeEach(() => {
@@ -141,7 +142,7 @@ describe("loadSource — streaming media URLs", () => {
     const loaded = await loadSource("https://x.test/pix/img");
     expect(loaded.kind).toBe("image");
     expect(loaded.blob).toBeDefined();
-    expect(loaded.url).toBeUndefined();
+    expect(loaded.url).toBe("https://x.test/pix/img");
     expect(spy).toHaveBeenCalledTimes(2);
   });
 
@@ -152,7 +153,7 @@ describe("loadSource — streaming media URLs", () => {
     const loaded = await loadSource("https://x.test/v/clip.mp4");
     expect(loaded.kind).toBe("video");
     expect(loaded.blob).toBeDefined();
-    expect(loaded.url).toBeUndefined();
+    expect(loaded.url).toBe("https://x.test/v/clip.mp4");
   });
 
   it("skips the sniff when requestInit has custom headers (auth cannot reach <video>)", async () => {
@@ -164,7 +165,7 @@ describe("loadSource — streaming media URLs", () => {
     });
     expect(loaded.kind).toBe("video");
     expect(loaded.blob).toBeDefined();
-    expect(loaded.url).toBeUndefined();
+    expect(loaded.url).toBe("https://x.test/v/clip.mp4");
     expect(spy).toHaveBeenCalledTimes(1);
     const init = spy.mock.calls[0]?.[1] as RequestInit;
     expect(init.headers).toEqual({ Authorization: "Bearer t" });
@@ -213,7 +214,7 @@ describe("loadSource — in-memory sources", () => {
   });
 
   it("unsupported type → typed error", async () => {
-    await expect(loadSource(textBlob())).rejects.toMatchObject({
+    await expect(loadSource(junkBlob())).rejects.toMatchObject({
       code: "unsupported-type",
     });
   });

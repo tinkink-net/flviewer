@@ -1,6 +1,12 @@
-import { AUDIO_EXTENSIONS, detectKind, extensionOf, VIDEO_EXTENSIONS } from "./detect";
+import {
+  AUDIO_EXTENSIONS,
+  detectKind,
+  extensionOf,
+  textSubKindOf,
+  VIDEO_EXTENSIONS,
+} from "./detect";
 import { createFlvError, FlvAbortError, isAbortError } from "./errors";
-import type { FlvKind, Source } from "./types";
+import type { FlvKind, FlvTextKind, Source } from "./types";
 
 export interface LoadedSource {
   /** Full payload. Absent for streaming media sources (played from `url`). */
@@ -8,10 +14,12 @@ export interface LoadedSource {
   kind: FlvKind;
   /** Filename for display/download, when derivable. */
   name?: string;
-  /** Direct-play URL — present for streaming media sources (video/audio). */
+  /** The source URL — media streams from it; markdown assets base on it (ADR-6). */
   url?: string;
   /** Content-Type when known without a payload (streaming sources). */
   mime?: string;
+  /** Text-family sub-kind, text only. */
+  textKind?: FlvTextKind;
 }
 
 export type ProgressCallback = (loaded: number, total: number | null) => void;
@@ -32,6 +40,21 @@ function nameFromUrl(url: string): string {
 function extensionForKind(kind: FlvKind, mime: string): string {
   if (kind === "pdf") {
     return "pdf";
+  }
+  if (kind === "text") {
+    const sub = (mime.split(";")[0] ?? "").trim().replace(/^text\//, "");
+    const table: Record<string, string> = {
+      markdown: "md",
+      "tab-separated-values": "tsv",
+      javascript: "js",
+      html: "html",
+      css: "css",
+      json: "json",
+      csv: "csv",
+      xml: "xml",
+      plain: "txt",
+    };
+    return table[sub] ?? "txt";
   }
   const fallback = kind === "video" ? "vid" : kind === "audio" ? "aud" : "img";
   const table: Record<string, string> = {
@@ -246,9 +269,11 @@ export async function loadSource(
   const onProgress = options?.onProgress ?? (() => {});
   let blob: Blob | undefined;
   let name: string | undefined;
+  let sourceUrl: string | undefined;
 
   if (typeof source === "string" || source instanceof URL) {
     const url = typeof source === "string" ? source : source.href;
+    sourceUrl = url;
     name = nameFromUrl(url);
     const ext = extensionOf(name);
     const sniffable =
@@ -299,5 +324,13 @@ export async function loadSource(
     );
     throw err;
   }
-  return { blob, kind, name };
+  return {
+    blob,
+    kind,
+    name,
+    // URL sources keep their URL: the markdown asset base resolves
+    // against it (ADR-6). Streaming media carries it in the same field.
+    ...(sourceUrl ? { url: sourceUrl } : null),
+    ...(kind === "text" ? { textKind: textSubKindOf({ mime: blob.type, name }) ?? "plain" } : null),
+  };
 }

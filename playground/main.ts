@@ -9,6 +9,16 @@ import webmUrl from "../test/fixtures/tiny.webm?url";
 
 const wc = document.querySelector<FlViewerElement>("#wc")!;
 
+// Text-family fixtures are served from public/ so relative asset references
+// inside sample.md resolve to stable URLs.
+const sample = (name: string): string => new URL(`/sample.${name}`, location.href).href;
+
+// Markdown asset hook demo: rewrite every asset reference (ADR-6).
+const hookOptions = {
+  title: "sample.md (transformAssetUrl hook)",
+  transformAssetUrl: (url: string) => (url.includes("tiny.png") ? `${url}?via-hook=1` : url),
+};
+
 // Custom file picker: selected file becomes a Blob source, kind is auto-detected.
 let customFile: File | null = null;
 const customInput = document.querySelector<HTMLInputElement>("#custom-file")!;
@@ -22,6 +32,7 @@ customInput.addEventListener("change", () => {
 
 wc.on("ready", (detail) => console.log("[fl-viewer] ready", detail));
 wc.on("error", (detail) => console.error("[fl-viewer] error", detail));
+wc.on("truncated", (detail) => console.warn("[fl-viewer] truncated", detail));
 
 let embedController = mount(document.querySelector("#embed-1")!, jpgUrl);
 embedController.on("ready", (detail) => console.log("[embed] ready", detail));
@@ -55,11 +66,41 @@ document.addEventListener("click", async (ev) => {
     case "open-mp3":
       open(mp3Url, { title: "tiny.mp3" });
       break;
+    case "open-txt":
+      open(sample("txt"), { title: "sample.txt" });
+      break;
+    case "open-code":
+      open(sample("ts"), { title: "sample.ts" });
+      break;
+    case "open-json":
+      open(sample("json"), { title: "sample.json" });
+      break;
+    case "open-csv":
+      open(sample("csv"), { title: "sample.csv" });
+      break;
+    case "open-xml":
+      open(sample("xml"), { title: "sample.xml" });
+      break;
+    case "open-md":
+      open(sample("md"), { title: "sample.md" });
+      break;
+    case "open-md-hook":
+      open(sample("md"), hookOptions);
+      break;
+    case "open-md-blob": {
+      const text = await (await fetch(sample("md"))).text();
+      // In-memory source: no base URL — relative assets degrade to placeholders.
+      open(new Blob([text], { type: "text/markdown" }), { title: "sample.md (blob)" });
+      break;
+    }
     case "open-url":
       open(new URL(pngUrl, location.href));
       break;
     case "open-broken":
-      open(new Blob(["hello"], { type: "text/plain" }));
+      // Invalid UTF-8 with no known magic — genuinely unsupported.
+      open(
+        new Blob([new Uint8Array([0x80, 0x81, 0x82, 0x83])], { type: "application/octet-stream" }),
+      );
       break;
     case "mount-pdf":
       embedController.update(pdfUrl);
@@ -69,6 +110,9 @@ document.addEventListener("click", async (ev) => {
       break;
     case "mount-mp4":
       embedController.update(mp4Url);
+      break;
+    case "mount-md":
+      embedController.update(sample("md"));
       break;
     case "swap":
       embedController.update(jpgUrl);
@@ -81,6 +125,9 @@ document.addEventListener("click", async (ev) => {
       break;
     case "wc-mp4":
       wc.source = mp4Url;
+      break;
+    case "wc-md":
+      wc.source = sample("md");
       break;
   }
 });

@@ -6,9 +6,21 @@ export interface SourceOptions {
   requestInit?: RequestInit;
   /** Accessible label for the preview surface. */
   title?: string;
+  /** Markdown asset base: relative references resolve against it (default: the source URL). */
+  baseUrl?: string;
+  /** Markdown asset hook (raw reference → final URL; `null` → placeholder). */
+  transformAssetUrl?: FlvUrlTransform;
+  /** Markdown link hook (raw reference → final URL; `null` → link stripped). */
+  transformLinkUrl?: FlvUrlTransform;
 }
 
-export type FlvKind = "image" | "pdf" | "video" | "audio";
+export type FlvKind = "image" | "pdf" | "video" | "audio" | "text";
+
+/** Text-family sub-kind (see CONTEXT.md "Sub-kind"). */
+export type FlvTextKind = "plain" | "code" | "markdown" | "json" | "csv" | "xml";
+
+/** Raw Markdown asset/link reference → final URL (`null` → placeholder/stripped). */
+export type FlvUrlTransform = (url: string) => string | null;
 
 export type FlvErrorCode =
   | "fetch-error"
@@ -28,6 +40,15 @@ export interface FlvReadyDetail {
   /** Page count, PDF only. */
   pages?: number;
   name?: string;
+  /** Text-family sub-kind, text only. */
+  textKind?: FlvTextKind;
+}
+
+export interface FlvTruncatedDetail {
+  /** Bytes kept (after the truncation caps were applied). */
+  bytes: number;
+  /** Lines kept. */
+  lines: number;
 }
 
 export interface FlvErrorDetail {
@@ -55,6 +76,7 @@ export interface FlvEventMap {
   close: FlvCloseDetail;
   pagechange: FlvPageDetail;
   zoom: FlvZoomDetail;
+  truncated: FlvTruncatedDetail;
 }
 
 export type FlvEventType = keyof FlvEventMap;

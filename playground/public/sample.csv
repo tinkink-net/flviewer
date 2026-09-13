@@ -1,0 +1,5 @@
+name,role,note
+"Smith, John",author,"quoted commas, and a
+newline inside quotes"
+Amy,reviewer,plain cell
+Guido,contributor,"say ""hi"""

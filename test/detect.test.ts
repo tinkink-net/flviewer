@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectKind } from "../src/detect";
+import { detectKind, looksLikeText, textSubKindOf } from "../src/detect";
 import { ftypBytes } from "./helpers";
 
 const b = (...bytes: number[]) => new Uint8Array(bytes);
@@ -123,6 +123,12 @@ describe("detectKind — magic bytes", () => {
   it("svg text", () => {
     expect(detectKind({ bytes: ascii('  <svg xmlns="…">') })).toBe("image");
     expect(detectKind({ bytes: ascii('<?xml version="1.0"?><svg/>') })).toBe("image");
+    // A plain XML declaration is not SVG — generic XML documents start this
+    // way (regression: they must resolve to the text family, not image).
+    const xml = ascii('<?xml version="1.0" encoding="UTF-8"?>\n<catalog>');
+    expect(detectKind({ mime: "application/xml", bytes: xml })).toBe("text");
+    expect(detectKind({ name: "a.xml", bytes: xml })).toBe("text");
+    expect(detectKind({ bytes: xml })).toBe("unsupported");
   });
 
   it("mp4/mov ftyp brands → video", () => {
@@ -172,5 +178,114 @@ describe("detectKind — magic bytes", () => {
   it("unknown → unsupported", () => {
     expect(detectKind({ bytes: ascii("just some text") })).toBe("unsupported");
     expect(detectKind({ bytes: b(0, 0, 0, 0) })).toBe("unsupported");
+  });
+});
+
+describe("detectKind — text family (Phase 2)", () => {
+  it("claims text/* mimes", () => {
+    expect(detectKind({ mime: "text/plain", bytes: ascii("hello") })).toBe("text");
+    expect(detectKind({ mime: "text/markdown; charset=utf-8", bytes: ascii("# hi") })).toBe("text");
+    expect(detectKind({ mime: "text/csv", bytes: ascii("a,b") })).toBe("text");
+  });
+
+  it("claims json/xml/javascript mimes", () => {
+    expect(detectKind({ mime: "application/json", bytes: ascii("{}") })).toBe("text");
+    expect(detectKind({ mime: "application/ld+json", bytes: ascii("{}") })).toBe("text");
+    expect(detectKind({ mime: "application/xml", bytes: ascii("<a/>") })).toBe("text");
+    expect(detectKind({ mime: "application/javascript", bytes: ascii("let x") })).toBe("text");
+    expect(detectKind({ mime: "application/xhtml+xml", bytes: ascii("<html/>") })).toBe("text");
+  });
+
+  it("claims text-family extensions", () => {
+    expect(detectKind({ name: "readme.md", bytes: ascii("#") })).toBe("text");
+    expect(detectKind({ name: "data.csv", bytes: ascii("a") })).toBe("text");
+    expect(detectKind({ name: "data.tsv", bytes: ascii("a") })).toBe("text");
+    expect(detectKind({ name: "index.ts", bytes: ascii("const x = 1;") })).toBe("text");
+    expect(detectKind({ name: "a.json", bytes: ascii("[1]") })).toBe("text");
+    expect(detectKind({ name: "a.xml", bytes: ascii("<a/>") })).toBe("text");
+    expect(detectKind({ name: "a.txt", bytes: ascii("hello") })).toBe("text");
+    expect(detectKind({ name: "a.xhtml", bytes: ascii("<html/>") })).toBe("text");
+  });
+
+  it("claims code extensions (ts, py, go, sh, yml…)", () => {
+    for (const ext of [
+      "ts",
+      "tsx",
+      "py",
+      "go",
+      "rs",
+      "java",
+      "c",
+      "sh",
+      "yml",
+      "yaml",
+      "toml",
+      "css",
+      "html",
+    ]) {
+      expect(detectKind({ name: `a.${ext}`, bytes: ascii("x") })).toBe("text");
+    }
+  });
+
+  it("binary-rejection: NUL or invalid UTF-8 falls through to magic", () => {
+    expect(detectKind({ mime: "text/plain", bytes: ascii("a\x00b") })).toBe("unsupported");
+    expect(detectKind({ mime: "text/plain", bytes: b(0x80, 0x81, 0x82) })).toBe("unsupported");
+    expect(detectKind({ name: "a.md", bytes: b(0xc3, 0x28) })).toBe("unsupported");
+    // Invalid UTF-8 that IS a media signature still resolves via magic.
+    expect(detectKind({ mime: "text/plain", bytes: b(0xff, 0xfb, 0x90, 0x44) })).toBe("audio");
+    expect(detectKind({ mime: "text/plain", bytes: ascii("%PDF-1.4") })).toBe("pdf");
+  });
+
+  it("bare ASCII without mime/extension stays unsupported", () => {
+    expect(detectKind({ bytes: ascii("just some text") })).toBe("unsupported");
+  });
+
+  it("a multi-byte char split at the head boundary still passes", () => {
+    const build = (tail: number[]): Uint8Array => {
+      const bytes = new Uint8Array(64);
+      bytes.set(Uint8Array.from(ascii("a".repeat(62))), 0);
+      bytes.set(Uint8Array.from(tail), 64 - tail.length);
+      return bytes;
+    };
+    // Complete 3-byte char ending at the boundary.
+    expect(looksLikeText(build([0xe6, 0x97, 0xa5]))).toBe(true); // 日
+    // Truncated multi-byte sequence at the boundary — stream mode keeps it.
+    expect(looksLikeText(build([0xe6, 0x97]))).toBe(true);
+    // Genuinely invalid continuation is rejected.
+    expect(looksLikeText(build([0xe6, 0x28]))).toBe(false);
+  });
+});
+
+describe("textSubKindOf", () => {
+  it("refines by MIME", () => {
+    expect(textSubKindOf({ mime: "text/markdown" })).toBe("markdown");
+    expect(textSubKindOf({ mime: "text/csv" })).toBe("csv");
+    expect(textSubKindOf({ mime: "text/tab-separated-values" })).toBe("csv");
+    expect(textSubKindOf({ mime: "text/html" })).toBe("code");
+    expect(textSubKindOf({ mime: "text/css" })).toBe("code");
+    expect(textSubKindOf({ mime: "application/json" })).toBe("json");
+    expect(textSubKindOf({ mime: "application/xml" })).toBe("xml");
+    expect(textSubKindOf({ mime: "application/javascript" })).toBe("code");
+    expect(textSubKindOf({ mime: "text/plain" })).toBe("plain");
+    expect(textSubKindOf({ mime: "text/rtf" })).toBe("plain");
+  });
+
+  it("refines by extension when the MIME is generic", () => {
+    expect(textSubKindOf({ mime: "application/octet-stream", name: "a.md" })).toBe("markdown");
+    expect(textSubKindOf({ mime: "application/octet-stream", name: "a.ts" })).toBe("code");
+    expect(textSubKindOf({ mime: "application/octet-stream", name: "a.tsv" })).toBe("csv");
+    expect(textSubKindOf({ mime: "application/octet-stream", name: "a.json" })).toBe("json");
+    expect(textSubKindOf({ mime: "application/octet-stream", name: "a.plist" })).toBe("xml");
+    expect(textSubKindOf({ mime: "application/octet-stream", name: "a.txt" })).toBe("plain");
+  });
+
+  it("extension beats generic text/* mime", () => {
+    expect(textSubKindOf({ mime: "text/plain", name: "a.md" })).toBe("markdown");
+    expect(textSubKindOf({ mime: "text/plain", name: "a.json" })).toBe("json");
+  });
+
+  it("returns null when nothing claims text", () => {
+    expect(textSubKindOf({ mime: "application/octet-stream", name: "a.xyz" })).toBeNull();
+    expect(textSubKindOf({})).toBeNull();
   });
 });

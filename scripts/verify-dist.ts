@@ -12,6 +12,18 @@ import { chromium } from "playwright";
 const root = "dist";
 const png = readFileSync("test/fixtures/tiny.png");
 const pdf = readFileSync("test/fixtures/two-page.pdf");
+const md = `# Verify dist
+
+Rendered markdown through the built artifact (ADR-6): prose + lazy
+pipeline + relative asset resolution.
+
+![dot](fixture.png)
+
+\`\`\`js
+const x = 1;
+\`\`\`
+`;
+const txt = "hello from the dist text view\nsecond line";
 
 const server = createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://x");
@@ -23,6 +35,16 @@ const server = createServer((req, res) => {
   if (url.pathname === "/fixture.pdf") {
     res.setHeader("content-type", "application/pdf");
     res.end(pdf);
+    return;
+  }
+  if (url.pathname === "/fixture.md") {
+    res.setHeader("content-type", "text/markdown; charset=utf-8");
+    res.end(md);
+    return;
+  }
+  if (url.pathname === "/fixture.txt") {
+    res.setHeader("content-type", "text/plain; charset=utf-8");
+    res.end(txt);
     return;
   }
   if (url.pathname === "/") {
@@ -130,6 +152,111 @@ if ("kind" in ready && ready.kind === "pdf") {
 } else {
   check("PDF ready event", false, JSON.stringify(ready));
 }
+
+// Text family through the built artifact: plain text + rendered markdown
+// (lazy pipeline chunk) with a relative asset.
+const textChecks = await page.evaluate(async () => {
+  const moduleUrl = "/dist/index.mjs";
+  const { mount } = (await import(moduleUrl)) as typeof import("../src/index");
+  const host = document.createElement("div");
+  host.style.cssText = "width:500px;height:400px";
+  document.body.append(host);
+
+  const wait = <T>(fn: () => T | null | undefined, ms = 8000): Promise<T> =>
+    new Promise((resolve, reject) => {
+      const start = performance.now();
+      const tick = () => {
+        const v = fn();
+        if (v !== null && v !== undefined) {
+          resolve(v);
+          return;
+        }
+        if (performance.now() - start > ms) {
+          reject(new Error("timeout"));
+          return;
+        }
+        setTimeout(tick, 50);
+      };
+      tick();
+    });
+
+  const out: Record<string, unknown> = {};
+  const plain = mount(host, "/fixture.txt");
+  const plainReady = await new Promise<{ kind: string; textKind?: string }>((resolve) => {
+    plain.on("ready", resolve as never);
+    plain.on("error", resolve as never);
+  });
+  out.plainReady = plainReady;
+  out.plainPreClass =
+    (await wait(() => host.querySelector("pre"), 3000).then(
+      () => host.querySelector("pre")?.className ?? null,
+      () => "no-pre",
+    )) ?? null;
+  out.plainText = (await wait(() =>
+    host.querySelector<HTMLPreElement>("pre.flv-plain")?.textContent?.includes("second line")
+      ? true
+      : null,
+  ).then(
+    () => true,
+    () => false,
+  )) as boolean;
+  plain.destroy();
+
+  const mdHost = document.createElement("div");
+  mdHost.style.cssText = "width:500px;height:400px";
+  document.body.append(mdHost);
+  const md = mount(mdHost, "/fixture.md");
+  const mdReady = await new Promise<{
+    kind: string;
+    textKind?: string;
+    error?: { code: string; message: string };
+  }>((resolve) => {
+    md.on("ready", resolve as never);
+    md.on("error", (d: { error: { code: string; message: string } }) =>
+      resolve({ kind: "error", error: d.error }),
+    );
+  });
+  out.mdReady = mdReady;
+  out.mdProse =
+    (await wait(() => mdHost.querySelector(".flv-prose h1"), 4000).then(
+      () => mdHost.querySelector(".flv-prose h1")?.textContent ?? null,
+      () => null,
+    )) ?? null;
+  out.mdCode = Boolean(mdHost.querySelector(".flv-prose pre code.hljs"));
+  out.mdImage = (await wait(() => {
+    const el = mdHost.querySelector<HTMLImageElement>(".flv-prose img");
+    return el?.complete && el.naturalWidth === 32 ? el : null;
+  }, 4000).then(
+    () => true,
+    () => false,
+  )) as boolean;
+  const toggle = mdHost.querySelector<HTMLButtonElement>('button[aria-label="Toggle source"]');
+  toggle?.click();
+  out.mdSourceToggle = (await wait(() => mdHost.querySelector("pre.flv-code"), 4000).then(
+    () => true,
+    () => false,
+  )) as boolean;
+  md.destroy();
+  return out;
+});
+check(
+  "text view via built artifact",
+  textChecks.plainReady === true ||
+    ((textChecks.plainReady as { kind?: string }).kind === "text" && textChecks.plainText === true),
+  JSON.stringify(textChecks.plainReady),
+);
+check(
+  "markdown via built artifact (lazy pipeline + assets + toggle)",
+  (textChecks.mdReady as { kind?: string }).kind === "text" &&
+    textChecks.mdProse === "Verify dist" &&
+    textChecks.mdCode === true &&
+    textChecks.mdImage === true &&
+    textChecks.mdSourceToggle === true,
+  JSON.stringify(textChecks),
+);
+console.log(
+  `  plain diagnostics: pre=${String(textChecks.plainPreClass)} text=${String(textChecks.plainText)}`,
+);
 
 check("no page errors / console errors", errors.length === 0, errors.slice(0, 3).join(" | "));
 

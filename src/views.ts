@@ -5,7 +5,7 @@ import type { PanZoomMode } from "./panzoom";
 import { PdfBinaryDataFactory } from "./pdf-assets";
 import { createBlobWorker } from "./pdf-worker";
 import type { LoadedSource } from "./source";
-import type { FlvError } from "./types";
+import type { FlvError, FlvUrlTransform } from "./types";
 
 /** Toolbar-side playback controls the Core owns; media views wire into them. */
 export interface MediaControlsHost {
@@ -26,6 +26,16 @@ export interface ViewCallbacks {
   onFullscreenToggle?: () => void;
   /** Present for media views: bind the element to the toolbar media controls. */
   mediaControls?: MediaControlsHost;
+  /** Text preview hit a truncation cap (ADR-6) — kept amounts. */
+  onTruncated?: (detail: { bytes: number; lines: number }) => void;
+  /** Toolbar-independent download request (truncation notice hint). */
+  onDownload?: () => void;
+  /** Markdown rendered ↔ source toggle flipped (source mode = true). */
+  onSourceToggle?: (sourceMode: boolean) => void;
+  /** Markdown asset/link resolution (SourceOptions pass-through, ADR-6). */
+  baseUrl?: string;
+  transformAssetUrl?: FlvUrlTransform;
+  transformLinkUrl?: FlvUrlTransform;
 }
 
 export interface FlvView {
@@ -40,6 +50,8 @@ export interface FlvView {
   prevPage(): void;
   /** Switch the interaction mode (select/hand). */
   setMode(mode: PanZoomMode): void;
+  /** Markdown views only: flip rendered ↔ raw source. */
+  toggleSource?(): void;
   destroy(): void;
 }
 

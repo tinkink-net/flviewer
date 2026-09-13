@@ -14,4 +14,8 @@ export type {
   FlvCloseDetail,
   FlvPageDetail,
   FlvZoomDetail,
+  FlvTruncatedDetail,
+  FlvKind,
+  FlvTextKind,
+  FlvUrlTransform,
 } from "./types";

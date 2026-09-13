@@ -11,7 +11,9 @@ export const pdfBytes = () => bytesOf(TWO_PAGE_PDF_B64);
 export const pngBlob = () => new Blob([pngBytes()], { type: "image/png" });
 export const jpgBlob = () => new Blob([jpgBytes()], { type: "image/jpeg" });
 export const pdfBlob = () => new Blob([pdfBytes()], { type: "application/pdf" });
-export const textBlob = () => new Blob([new TextEncoder().encode("hello")], { type: "text/plain" });
+/** Invalid UTF-8, no known magic → genuinely unsupported. */
+export const junkBlob = () =>
+  new Blob([new Uint8Array([0x80, 0x81, 0x82, 0x83])], { type: "application/octet-stream" });
 
 /** Minimal valid mono 16-bit PCM WAV (sine at 440 Hz). */
 export function wavBytes(durationSec = 0.05, sampleRate = 8000): Uint8Array<ArrayBuffer> {

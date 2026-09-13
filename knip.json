@@ -1,5 +1,6 @@
 {
   "entry": ["src/index.ts"],
   "project": ["src/**/*.ts", "playground/**/*.ts"],
+  "ignore": ["playground/public/**"],
   "ignoreDependencies": ["@arethetypeswrong/cli", "publint", "@vitest/browser"]
 }

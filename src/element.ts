@@ -1,11 +1,12 @@
 import { mount } from "./embed";
-import type { FlvController, FlvEventMap, FlvEventType, Source } from "./types";
+import type { FlvController, FlvEventMap, FlvEventType, FlvUrlTransform, Source } from "./types";
 
 const ELEMENT_NAME = "fl-viewer";
 
 /**
  * `<fl-viewer>` — custom element wrapping the Core, rendered in light DOM.
- * Attributes: `src` (URL). Complex values (`source`, `requestInit`) via properties.
+ * Attributes: `src` (URL). Complex values (`source`, `requestInit`,
+ * `transformAssetUrl`, …) via properties. Same semantics as the Controller.
  */
 export class FlViewerElement extends HTMLElement {
   static observedAttributes = ["src"];
@@ -13,13 +14,25 @@ export class FlViewerElement extends HTMLElement {
   #controller: FlvController | null = null;
   #source: Source | null = null;
   #requestInit: RequestInit | undefined;
+  #baseUrl: string | undefined;
+  #transformAssetUrl: FlvUrlTransform | undefined;
+  #transformLinkUrl: FlvUrlTransform | undefined;
   #connected = false;
+
+  #options() {
+    return {
+      requestInit: this.#requestInit,
+      baseUrl: this.#baseUrl,
+      transformAssetUrl: this.#transformAssetUrl,
+      transformLinkUrl: this.#transformLinkUrl,
+    };
+  }
 
   connectedCallback(): void {
     this.#connected = true;
     if (this.#source !== null) {
       this.#ensureController();
-      this.#controller?.update(this.#source, { requestInit: this.#requestInit });
+      this.#controller?.update(this.#source, this.#options());
     }
   }
 
@@ -34,7 +47,7 @@ export class FlViewerElement extends HTMLElement {
       this.#source = newValue;
       if (this.#connected && newValue !== null) {
         this.#ensureController();
-        this.#controller?.update(newValue, { requestInit: this.#requestInit });
+        this.#controller?.update(newValue, this.#options());
       }
     }
   }
@@ -43,7 +56,7 @@ export class FlViewerElement extends HTMLElement {
     if (this.#controller || this.#source === null) {
       return;
     }
-    this.#controller = mount(this, this.#source, { requestInit: this.#requestInit });
+    this.#controller = mount(this, this.#source, this.#options());
   }
 
   /** URL source, same as the `src` attribute. */
@@ -66,7 +79,7 @@ export class FlViewerElement extends HTMLElement {
     this.#source = value;
     if (this.#connected && value !== null) {
       this.#ensureController();
-      this.#controller?.update(value, { requestInit: this.#requestInit });
+      this.#controller?.update(value, this.#options());
     }
   }
 
@@ -77,7 +90,40 @@ export class FlViewerElement extends HTMLElement {
   set requestInit(value: RequestInit | undefined) {
     this.#requestInit = value;
     if (this.#connected && this.#source !== null) {
-      this.#controller?.update(this.#source, { requestInit: value });
+      this.#controller?.update(this.#source, this.#options());
+    }
+  }
+
+  /** Markdown asset base for relative references (ADR-6). */
+  get baseUrl(): string | undefined {
+    return this.#baseUrl;
+  }
+  set baseUrl(value: string | undefined) {
+    this.#baseUrl = value;
+    if (this.#connected && this.#source !== null) {
+      this.#controller?.update(this.#source, this.#options());
+    }
+  }
+
+  /** Markdown asset hook: raw reference → final URL, `null` → placeholder. */
+  get transformAssetUrl(): FlvUrlTransform | undefined {
+    return this.#transformAssetUrl;
+  }
+  set transformAssetUrl(value: FlvUrlTransform | undefined) {
+    this.#transformAssetUrl = value;
+    if (this.#connected && this.#source !== null) {
+      this.#controller?.update(this.#source, this.#options());
+    }
+  }
+
+  /** Markdown link hook: raw reference → final URL, `null` → stripped. */
+  get transformLinkUrl(): FlvUrlTransform | undefined {
+    return this.#transformLinkUrl;
+  }
+  set transformLinkUrl(value: FlvUrlTransform | undefined) {
+    this.#transformLinkUrl = value;
+    if (this.#connected && this.#source !== null) {
+      this.#controller?.update(this.#source, this.#options());
     }
   }
 

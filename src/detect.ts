@@ -1,4 +1,6 @@
-export type DetectResult = "image" | "pdf" | "video" | "audio" | "unsupported";
+import type { FlvTextKind } from "./types";
+
+export type DetectResult = "image" | "pdf" | "video" | "audio" | "text" | "unsupported";
 
 export interface DetectInput {
   /** MIME from Content-Type / blob.type, if any. */
@@ -25,6 +27,169 @@ const IMAGE_EXTENSIONS = new Set([
 export const VIDEO_EXTENSIONS = new Set(["mp4", "m4v", "webm", "mov", "ogv"]);
 
 export const AUDIO_EXTENSIONS = new Set(["mp3", "wav", "ogg", "oga", "opus", "m4a", "aac", "flac"]);
+
+/** Text family: MIME/extension → sub-kind (see CONTEXT.md "Sub-kind"). */
+const TEXT_MIME_PREFIXES = new Set(["text/"]);
+
+const CODE_EXTENSIONS = new Set([
+  // JavaScript / TypeScript family
+  "js",
+  "jsx",
+  "mjs",
+  "cjs",
+  "ts",
+  "tsx",
+  "mts",
+  "cts",
+  // Styles
+  "css",
+  "scss",
+  "less",
+  // Markup / templates
+  "html",
+  "htm",
+  "vue",
+  "svelte",
+  // Configs
+  "ini",
+  "conf",
+  "toml",
+  "yml",
+  "yaml",
+  "properties",
+  "env",
+  // Shells
+  "sh",
+  "bash",
+  "zsh",
+  "fish",
+  "bat",
+  "cmd",
+  "ps1",
+  // Systems / compiled
+  "c",
+  "h",
+  "cpp",
+  "cc",
+  "cxx",
+  "hpp",
+  "hh",
+  "cs",
+  "java",
+  "kt",
+  "kts",
+  "swift",
+  "scala",
+  "go",
+  "rs",
+  "dart",
+  "php",
+  "rb",
+  "py",
+  "pyw",
+  "lua",
+  "pl",
+  "pm",
+  "sql",
+  "r",
+  "graphql",
+  "gql",
+  "proto",
+  "dockerfile",
+  "mk",
+  "make",
+  "diff",
+  "patch",
+]);
+
+const TEXT_EXTENSIONS: Record<string, FlvTextKind> = {
+  txt: "plain",
+  log: "plain",
+  text: "plain",
+  md: "markdown",
+  markdown: "markdown",
+  json: "json",
+  jsonl: "json",
+  csv: "csv",
+  tsv: "csv",
+  xml: "xml",
+  xhtml: "xml",
+  rss: "xml",
+  atom: "xml",
+  xsl: "xml",
+  xslt: "xml",
+  xsd: "xml",
+  plist: "xml",
+};
+
+/** Code extensions resolve to a highlight language at render time. */
+for (const ext of CODE_EXTENSIONS) {
+  TEXT_EXTENSIONS[ext] = "code";
+}
+
+/**
+ * Sub-kind refinement for the text family (see CONTEXT.md "Sub-kind"):
+ * specific MIME → extension → generic `text/*`. Returns null when neither
+ * claims a text sub-kind.
+ */
+export function textSubKindOf(input: {
+  mime?: string | null;
+  name?: string | null;
+}): FlvTextKind | null {
+  const mime = input.mime?.toLowerCase().split(";")[0]?.trim();
+  const ext = extensionOf(input.name);
+  const byExt = ext ? (TEXT_EXTENSIONS[ext] ?? null) : null;
+  if (mime) {
+    if (TEXT_MIME_PREFIXES.has(mime.slice(0, 5))) {
+      if (mime === "text/markdown") {
+        return "markdown";
+      }
+      if (mime === "text/csv" || mime === "text/tab-separated-values") {
+        return "csv";
+      }
+      if (mime === "text/xml" || mime === "application/xhtml+xml" || mime.endsWith("+xml")) {
+        return "xml";
+      }
+      if (mime === "text/html" || mime === "text/javascript" || mime === "text/css") {
+        return "code";
+      }
+      // Generic text/* (text/plain and friends): the extension is more specific.
+      return byExt ?? "plain";
+    }
+    if (mime === "application/json" || mime === "application/x-ndjson" || mime.endsWith("+json")) {
+      return "json";
+    }
+    if (mime === "application/xml" || mime.endsWith("+xml")) {
+      return "xml";
+    }
+    if (
+      mime === "application/javascript" ||
+      mime === "application/x-javascript" ||
+      mime === "application/ecmascript"
+    ) {
+      return "code";
+    }
+  }
+  return byExt;
+}
+
+/**
+ * Text sniff: rejects NUL bytes and invalid UTF-8. `stream: true` keeps a
+ * truncated multi-byte sequence at the head boundary from failing fatally.
+ */
+export function looksLikeText(bytes: Uint8Array): boolean {
+  for (let i = 0; i < bytes.length; i++) {
+    if (bytes[i] === 0) {
+      return false;
+    }
+  }
+  try {
+    void new TextDecoder("utf-8", { fatal: true }).decode(bytes, { stream: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** ISO-BMFF ftyp brands that mean "video container" (MP4/MOV/3GP family). */
 const VIDEO_FTYP_BRANDS = new Set([
@@ -73,7 +238,15 @@ function startsWith(bytes: Uint8Array, ascii: string, offset = 0): boolean {
 function looksLikeSvg(bytes: Uint8Array): boolean {
   const text = new TextDecoder("utf-8", { fatal: false }).decode(bytes.slice(0, 64));
   const trimmed = text.replace(/^\s+/, "");
-  return /^<\?xml/i.test(trimmed) || /^<svg[\s>]/i.test(trimmed);
+  if (/^<svg[\s/>]/i.test(trimmed)) {
+    return true;
+  }
+  // An XML declaration alone is not SVG — every XML document starts this
+  // way. Require the <svg root element within the sniffed head.
+  if (/^<\?xml/i.test(trimmed)) {
+    return /<svg[\s/>]/i.test(trimmed);
+  }
+  return false;
 }
 
 function magicKind(bytes: Uint8Array): DetectResult {
@@ -153,8 +326,11 @@ function magicKind(bytes: Uint8Array): DetectResult {
 }
 
 /**
- * Detection chain: known-good MIME → extension → magic bytes.
+ * Detection chain: known-good MIME → extension → text sniff → magic bytes.
  * Generic MIMEs (e.g. application/octet-stream) fall through to extension.
+ * A text claim (MIME `text/*`, json/xml/javascript, or a text-family
+ * extension) must pass the UTF-8/NUL sniff — mislabeled binaries keep
+ * falling through to magic bytes.
  */
 export function detectKind(input: DetectInput): DetectResult {
   const mime = input.mime?.toLowerCase().split(";")[0]?.trim();
@@ -182,6 +358,15 @@ export function detectKind(input: DetectInput): DetectResult {
   }
   if (AUDIO_EXTENSIONS.has(ext)) {
     return "audio";
+  }
+  if (textSubKindOf(input) !== null && looksLikeText(input.bytes)) {
+    // The text sniff precedes magic bytes — but a known binary signature
+    // (e.g. `%PDF-` served as text/plain) still wins over the text claim.
+    const magic = magicKind(input.bytes);
+    if (magic === "unsupported") {
+      return "text";
+    }
+    return magic;
   }
   return magicKind(input.bytes);
 }

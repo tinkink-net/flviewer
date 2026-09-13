@@ -1,0 +1,13 @@
+{
+  "name": "flviewer",
+  "version": "0.0.2",
+  "description": "Pure client-side file preview for the browser",
+  "keywords": ["file-preview", "image", "pdf", "text", "markdown"],
+  "supports": {
+    "kinds": ["image", "pdf", "video", "audio", "text"],
+    "textSubKinds": ["plain", "code", "markdown", "json", "csv", "xml"],
+    "nested": {
+      "deeply": [1, 2, 3, { "ok": true, "note": "pretty-printed with a 2-space indent" }]
+    }
+  }
+}

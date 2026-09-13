@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { mount, open } from "../../src/index";
-import { jpgBlob, pdfBlob, pngBlob, textBlob } from "../helpers";
+import { jpgBlob, junkBlob, pdfBlob, pngBlob } from "../helpers";
 import mp3Url from "../fixtures/tiny.mp3?url";
 import mp4Url from "../fixtures/tiny.mp4?url";
 import pngUrl from "../fixtures/tiny.png?url";
@@ -108,7 +108,7 @@ describe("browser rendering", () => {
   it("shows the typed error state for unsupported types", async () => {
     const container = document.createElement("div");
     document.body.append(container);
-    const controller = mount(container, textBlob());
+    const controller = mount(container, junkBlob());
     const error = await new Promise<{ error: { code: string } }>((resolve) =>
       controller.on("error", resolve as never),
     );

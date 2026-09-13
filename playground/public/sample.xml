@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<catalog xmlns:bk="https://example.test/book">
+  <book id="bk101" available="true">
+    <title>Flviewer Field Guide</title>
+    <price currency="USD">29.99</price>
+    <tags>
+      <tag>client-side</tag>
+      <tag>zero-config</tag>
+    </tags>
+    <!-- highlighted as xml -->
+  </book>
+</catalog>

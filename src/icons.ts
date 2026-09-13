@@ -43,4 +43,10 @@ export const ICONS = {
   hand: I(
     '<g transform="scale(0.75) translate(1.5 1)"><path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v2"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></g>',
   ),
+  // Markdown rendered ↔ source toggle.
+  code: I('<path d="M7.5 6.5 4 10l3.5 3.5M12.5 6.5 16 10l-3.5 3.5"/>'),
+  // Unavailable markdown asset placeholder.
+  image: I(
+    '<rect x="2.5" y="4" width="15" height="12" rx="2"/><circle cx="7" cy="8.5" r="1.6"/><path d="M17 13.5 12.5 9 6 15.5"/>',
+  ),
 };

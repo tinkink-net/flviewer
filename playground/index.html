@@ -8,13 +8,20 @@
   <body>
     <main>
       <h1>flviewer playground</h1>
-      <p>Pure client-side file preview: images, PDF, video & audio. Double as manual QA rig.</p>
+      <p>
+        Pure client-side file preview: images, PDF, video &amp; audio, and the text family (txt /
+        code / JSON / CSV / XML / Markdown-as-HTML). Double as manual QA rig.
+      </p>
 
       <h2>Custom file</h2>
       <p>
         <label>
-          Pick a file (PDF, image, video or audio):
-          <input type="file" id="custom-file" accept="application/pdf,image/*,video/*,audio/*" />
+          Pick a file (PDF, image, video, audio or text):
+          <input
+            type="file"
+            id="custom-file"
+            accept="application/pdf,image/*,video/*,audio/*,.md,.markdown,.csv,.tsv,.json,.xml,.txt,.log,.ts,.tsx,.js,.jsx,.py,.go,.rs,.java,.sh,.yml,.yaml,.toml,.html,.css"
+          />
         </label>
         <button data-demo="custom-open" disabled>open in overlay</button>
         <button data-demo="custom-mount" disabled>mount below</button>
@@ -27,6 +34,14 @@
       <button data-demo="open-mp4">open MP4</button>
       <button data-demo="open-webm">open WebM</button>
       <button data-demo="open-mp3">open MP3</button>
+      <button data-demo="open-txt">open TXT</button>
+      <button data-demo="open-code">open TS (code)</button>
+      <button data-demo="open-json">open JSON</button>
+      <button data-demo="open-csv">open CSV</button>
+      <button data-demo="open-xml">open XML</button>
+      <button data-demo="open-md">open Markdown (rendered)</button>
+      <button data-demo="open-md-hook">open Markdown (asset hook)</button>
+      <button data-demo="open-md-blob">open Markdown (blob — no base URL)</button>
       <button data-demo="open-url">open by URL</button>
       <button data-demo="open-broken">open unsupported</button>
 
@@ -36,6 +51,7 @@
         <button data-demo="mount-pdf">mount PDF</button>
         <button data-demo="mount-png">mount PNG</button>
         <button data-demo="mount-mp4">mount MP4</button>
+        <button data-demo="mount-md">mount Markdown</button>
         <button data-demo="swap">controller.update()</button>
       </div>
 
@@ -45,6 +61,7 @@
         <button data-demo="wc-pdf">set source = PDF</button>
         <button data-demo="wc-png">set source = PNG</button>
         <button data-demo="wc-mp4">set source = MP4</button>
+        <button data-demo="wc-md">set source = Markdown</button>
       </div>
 
       <script type="module" src="/main.ts"></script>

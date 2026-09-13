@@ -1,8 +1,9 @@
 import { createFlvError, isAbortError } from "./errors";
 import { EventBus } from "./events";
 import { ICONS } from "./icons";
-import { loadSource, suggestFilename } from "./source";
 import type { LoadedSource } from "./source";
+import { loadSource, suggestFilename } from "./source";
+import { createTextView } from "./text-view";
 import { injectFlvStyles } from "./stylesheet";
 import type { FlvError, FlvEventMap, FlvEventType, FlvKind, Source, SourceOptions } from "./types";
 import { createImageView, createMediaView, createPdfView, formatMediaTime } from "./views";
@@ -67,6 +68,11 @@ const BUTTONS: ButtonSpec[] = [
     icon: "next",
     label: "Next page",
     action: (c) => c.view?.nextPage(),
+  },
+  {
+    icon: "code",
+    label: "Toggle source",
+    action: (c) => c.view?.toggleSource?.(),
   },
   {
     icon: "download",
@@ -377,6 +383,9 @@ export class Core {
       if (spec.label === "Select mode" || spec.label === "Hand mode") {
         btn.setAttribute("aria-pressed", "false");
       }
+      if (spec.label === "Toggle source") {
+        btn.setAttribute("aria-pressed", "false");
+      }
       if (spec.icon === "prev" || spec.icon === "next") {
         btn.dataset.flvPager = "true";
       }
@@ -489,6 +498,14 @@ export class Core {
       },
       onFullscreenToggle: () => this.toggleFullscreen(),
       mediaControls: { connect: this.#connectMedia },
+      onTruncated: (detail) => this.emit("truncated", detail),
+      onDownload: () => this.download(),
+      onSourceToggle: (sourceMode) => {
+        this.#button("Toggle source")?.setAttribute("aria-pressed", String(sourceMode));
+      },
+      baseUrl: options?.baseUrl,
+      transformAssetUrl: options?.transformAssetUrl,
+      transformLinkUrl: options?.transformLinkUrl,
     };
 
     void loadSource(source, {
@@ -518,7 +535,9 @@ export class Core {
               ? await createPdfView(this.#stage, loaded, callbacks)
               : loaded.kind === "video" || loaded.kind === "audio"
                 ? createMediaView(this.#stage, loaded, callbacks)
-                : createImageView(this.#stage, loaded, callbacks);
+                : loaded.kind === "text"
+                  ? await createTextView(this.#stage, loaded, callbacks)
+                  : createImageView(this.#stage, loaded, callbacks);
         } catch (err) {
           if (isAbortError(err)) {
             return;
@@ -542,6 +561,7 @@ export class Core {
           kind: loaded.kind,
           pages: this.#view?.pageCount,
           name: loaded.name,
+          textKind: loaded.kind === "text" ? loaded.textKind : undefined,
         });
       })
       .catch((err) => {
@@ -633,6 +653,11 @@ export class Core {
     showBtn("Fit", isDoc || isVideo);
     showBtn("Actual size", isDoc || isVideo);
     showBtn("Rotate", isDoc);
+    showBtn("Toggle source", kind === "text" && this.#loaded?.textKind === "markdown");
+    if (kind !== "text" || this.#loaded?.textKind !== "markdown") {
+      // New source: the toggle resets to rendered mode.
+      this.#button("Toggle source")?.setAttribute("aria-pressed", "false");
+    }
     this.#mediaGroup.hidden = !isMedia;
     this.#sepMedia.hidden = !isVideo;
     this.#sepTransform.hidden = !hasPanZoom;
