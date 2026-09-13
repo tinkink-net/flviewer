@@ -239,13 +239,16 @@ describe("browser rendering", () => {
     trigger.remove();
   });
 
-  it("wheel zooms in overlay mode", async () => {
+  it("wheel zooms in hand mode and scrolls in select mode (overlay)", async () => {
     const controller = open(pngBlob());
     await new Promise((resolve) => controller.on("ready", resolve as never));
     const stage = await waitUntil(() => document.querySelector(".flv-stage"));
+    // Select is the default: the wheel pans (no zoom event).
+    stage.dispatchEvent(new WheelEvent("wheel", { deltaY: -240, clientX: 100, clientY: 100 }));
     const zoomed = new Promise<{ scale: number }>((resolve) =>
       controller.on("zoom", resolve as never),
     );
+    (document.querySelector('button[aria-label="Hand mode"]') as HTMLButtonElement).click();
     stage.dispatchEvent(new WheelEvent("wheel", { deltaY: -240, clientX: 100, clientY: 100 }));
     const detail = await zoomed;
     expect(detail.scale).toBeGreaterThan(1);
@@ -394,6 +397,8 @@ describe("interaction modes (select/hand)", () => {
     document.body.append(container);
     const controller = mount(container, jpgBlob());
     await new Promise((resolve) => controller.on("ready", resolve as never));
+    // Drag-pan is a hand-mode behavior — switch out of the select default.
+    (container.querySelector('button[aria-label="Hand mode"]') as HTMLButtonElement).click();
     const stage = await waitUntil(() => container.querySelector(".flv-stage"));
     const img = await waitUntil(() => container.querySelector<HTMLImageElement>("img.flv-img"));
     await waitUntil(() => (img.complete ? true : null));
@@ -433,6 +438,9 @@ describe("interaction modes (select/hand)", () => {
     const controller = mount(container, jpgBlob());
     await new Promise((resolve) => controller.on("ready", resolve as never));
     const stage = await waitUntil(() => container.querySelector(".flv-stage"));
+    // Select is the default — the test starts by switching to hand.
+    expect(stage.classList.contains("flv-mode-select")).toBe(true);
+    (container.querySelector('button[aria-label="Hand mode"]') as HTMLButtonElement).click();
     const img = await waitUntil(() => container.querySelector<HTMLImageElement>("img.flv-img"));
     await waitUntil(() => (img.complete ? true : null));
     const stageRect = stage.getBoundingClientRect();

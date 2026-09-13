@@ -63,6 +63,13 @@ export class PanZoom {
 
     if (this.#opts.wheel) {
       const onWheel = (ev: WheelEvent) => {
+        // Select mode is for reading: the wheel scrolls (pans) the document
+        // instead of zooming; zoom stays on hand mode (and the zoom buttons).
+        if (this.#mode === "select") {
+          ev.preventDefault();
+          this.panBy(-ev.deltaX, -ev.deltaY);
+          return;
+        }
         if (this.#opts.wheelMode === "ctrl" && !ev.ctrlKey && !ev.metaKey) {
           return;
         }
@@ -285,6 +292,13 @@ export class PanZoom {
       clientX ?? rect.left + rect.width / 2,
       clientY ?? rect.top + rect.height / 2,
     );
+  }
+
+  /** Panned scroll (select-mode wheel): clamped by #apply like drag pan. */
+  panBy(dx: number, dy: number): void {
+    this.#tx += dx;
+    this.#ty += dy;
+    this.#apply();
   }
 
   #zoomAround(newScale: number, clientX: number, clientY: number): void {

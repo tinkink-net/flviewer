@@ -217,13 +217,31 @@ describe("clamped panning", () => {
     expect(media.style.transform).toContain("translate(-200px, -100px)");
   });
 
-  it("wheel zoom still works in select mode (zoom is mode-independent)", () => {
+  it("select mode wheel scrolls (pans) instead of zooming; hand mode zooms", () => {
     const stage = document.createElement("div");
     const media = document.createElement("div");
     stage.append(media);
     const pz2 = new PanZoom(stage, media, { mode: "select" });
     pz2.setMediaSize(100, 80);
     stage.dispatchEvent(new WheelEvent("wheel", { deltaY: -240, clientX: 300, clientY: 200 }));
+    expect(pz2.totalScale).toBe(1);
+    // The wheel delta became a pan (clamped; nothing to scroll at scale 1 for
+    // a small media box, so the zoom path must be re-checked in hand mode).
+    pz2.setMode("hand");
+    stage.dispatchEvent(new WheelEvent("wheel", { deltaY: -240, clientX: 300, clientY: 200 }));
     expect(pz2.totalScale).toBeGreaterThan(1);
+  });
+
+  it("select mode wheel pans overflowing media (scroll semantics)", () => {
+    const stage = document.createElement("div");
+    const media = document.createElement("div");
+    stage.append(media);
+    const pz2 = new PanZoom(stage, media, { mode: "select" });
+    // 1000px-tall media in a small stage overflows vertically at scale 1 —
+    // wheel-down scrolls the content up (negative ty), clamped at the edge.
+    pz2.setMediaSize(400, 1000);
+    stage.dispatchEvent(new WheelEvent("wheel", { deltaY: 3000, clientX: 300, clientY: 200 }));
+    expect(pz2.totalScale).toBe(1);
+    expect(media.style.transform).not.toContain("translate(0px, 0px)");
   });
 });

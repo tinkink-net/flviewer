@@ -140,7 +140,7 @@ export class Core {
   #volume: HTMLInputElement;
   #mediaEl: HTMLMediaElement | null = null;
   #scrubbing = false;
-  #mode: "hand" | "select" = "hand";
+  #mode: "hand" | "select" = "select";
   #view: FlvView | null = null;
   #loaded: LoadedSource | null = null;
   #lastSource: { source: Source; options?: SourceOptions } | null = null;

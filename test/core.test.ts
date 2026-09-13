@@ -240,7 +240,7 @@ describe("media views (video/audio)", () => {
 });
 
 describe("interaction modes", () => {
-  it("shows select/hand toggle for images, pressed on hand by default", async () => {
+  it("shows select/hand toggle for images, select pressed by default", async () => {
     const container = document.createElement("div");
     document.body.append(container);
     const controller = mount(container, pngBlob());
@@ -249,16 +249,17 @@ describe("interaction modes", () => {
     const selectBtn = root.querySelector('button[aria-label="Select mode"]') as HTMLButtonElement;
     const handBtn = root.querySelector('button[aria-label="Hand mode"]') as HTMLButtonElement;
     expect(selectBtn).toBeTruthy();
-    expect(handBtn.getAttribute("aria-pressed")).toBe("true");
-    // Toggle via toolbar...
-    selectBtn.click();
     expect(selectBtn.getAttribute("aria-pressed")).toBe("true");
-    expect(handBtn.getAttribute("aria-pressed")).toBe("false");
     const stage = root.querySelector(".flv-stage")!;
     expect(stage.classList.contains("flv-mode-select")).toBe(true);
-    // ...and via keyboard.
-    root.dispatchEvent(new KeyboardEvent("keydown", { key: "h", bubbles: true }));
+    // Toggle via toolbar...
+    handBtn.click();
+    expect(selectBtn.getAttribute("aria-pressed")).toBe("false");
+    expect(handBtn.getAttribute("aria-pressed")).toBe("true");
     expect(stage.classList.contains("flv-mode-hand")).toBe(true);
+    // ...and via keyboard.
+    root.dispatchEvent(new KeyboardEvent("keydown", { key: "v", bubbles: true }));
+    expect(stage.classList.contains("flv-mode-select")).toBe(true);
     controller.destroy();
   });
 
@@ -267,7 +268,7 @@ describe("interaction modes", () => {
     document.body.append(container);
     const controller = mount(container, pngBlob());
     await new Promise((resolve) => controller.on("ready", resolve));
-    (container.querySelector('button[aria-label="Select mode"]') as HTMLButtonElement).click();
+    (container.querySelector('button[aria-label="Hand mode"]') as HTMLButtonElement).click();
     controller.update(wavBlob());
     await new Promise((resolve) => controller.on("ready", resolve));
     const root = container.querySelector(".flv-root")!;
@@ -275,11 +276,11 @@ describe("interaction modes", () => {
       true,
     );
     expect((root.querySelector('button[aria-label="Hand mode"]') as HTMLElement).hidden).toBe(true);
-    // Back to an image: the select mode persisted through the audio source.
+    // Back to an image: the hand mode persisted through the audio source.
     controller.update(jpgBlob());
     await new Promise((resolve) => controller.on("ready", resolve));
     const stage = container.querySelector(".flv-stage")!;
-    expect(stage.classList.contains("flv-mode-select")).toBe(true);
+    expect(stage.classList.contains("flv-mode-hand")).toBe(true);
     controller.destroy();
   });
 });
