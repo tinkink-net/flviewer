@@ -245,3 +245,51 @@ describe("clamped panning", () => {
     expect(media.style.transform).not.toContain("translate(0px, 0px)");
   });
 });
+
+/**
+ * Pinch zoom (touch). happy-dom has no layout engine; the stage rect is
+ * mocked by `mockStageRect` and `setPointerCapture` is stubbed.
+ */
+function touch(stage: HTMLElement, type: "down" | "move" | "up", id: number, x: number, y: number) {
+  (stage as unknown as { setPointerCapture: () => void }).setPointerCapture = () => {};
+  stage.dispatchEvent(
+    new PointerEvent(`pointer${type}`, {
+      pointerId: id,
+      pointerType: "touch",
+      button: 0,
+      bubbles: true,
+      clientX: x,
+      clientY: y,
+    }),
+  );
+}
+
+describe("pinch zoom", () => {
+  it("zooms on a two-finger pinch in select mode (pinch is mode-independent)", () => {
+    const stage = document.createElement("div");
+    const media = document.createElement("div");
+    stage.append(media);
+    const pz2 = new PanZoom(stage, media, { mode: "select" });
+    pz2.setMediaSize(100, 80);
+    touch(stage, "down", 1, 100, 200);
+    touch(stage, "down", 2, 200, 200);
+    // Finger distance 100 → 200 doubles the scale.
+    touch(stage, "move", 2, 300, 200);
+    expect(pz2.totalScale).toBeCloseTo(2, 5);
+    touch(stage, "up", 1, 100, 200);
+    touch(stage, "up", 2, 300, 200);
+  });
+
+  it("still never pans on a single-finger drag in select mode", () => {
+    const stage = document.createElement("div");
+    const media = document.createElement("div");
+    stage.append(media);
+    const pz2 = new PanZoom(stage, media, { mode: "select" });
+    pz2.setMediaSize(1000, 800);
+    pz2.setScale(1);
+    touch(stage, "down", 1, 300, 200);
+    touch(stage, "move", 1, 100, 100);
+    touch(stage, "up", 1, 100, 100);
+    expect(media.style.transform).toContain("translate(0px, 0px)");
+  });
+});

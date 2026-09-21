@@ -117,6 +117,29 @@ function errorTitleFor(code: FlvError["code"]): string {
 
 type CoreState = "idle" | "loading" | "ready" | "error";
 
+/** Horizontal travel (px) before a touch is committed as a page swipe. */
+const SWIPE_THRESHOLD = 48;
+
+/**
+ * Primary pointer is coarse (phone/tablet). Pinch and swipe replace the
+ * on-screen controls there; a hybrid laptop reports a fine primary pointer,
+ * so its buttons stay put.
+ */
+function isCoarsePointer(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return false;
+  }
+  return window.matchMedia("(pointer: coarse)").matches;
+}
+
+interface SwipeState {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  dx: number;
+  active: boolean;
+}
+
 export class Core {
   readonly root: HTMLElement;
   readonly bus = new EventBus();
@@ -147,6 +170,7 @@ export class Core {
   #seq = 0;
   #abort: AbortController = new AbortController();
   #state: CoreState = "idle";
+  #swipe: SwipeState | null = null;
   #resizeObserver: ResizeObserver | null = null;
   #options: CoreOptions;
 
@@ -413,6 +437,10 @@ export class Core {
     this.#syncModeButtons();
     this.root.append(stage, progress, spinner, errorBox, toolbar);
     this.root.addEventListener("keydown", this.#keydown);
+    stage.addEventListener("pointerdown", this.#onStagePointerDown);
+    stage.addEventListener("pointermove", this.#onStagePointerMove);
+    stage.addEventListener("pointerup", this.#onStagePointerUp);
+    stage.addEventListener("pointercancel", this.#onStagePointerCancel);
     document.addEventListener("fullscreenchange", this.#fullscreenChange);
 
     if (!this.#options.isOverlay) {
@@ -459,6 +487,78 @@ export class Core {
   #button(label: string): HTMLButtonElement | null {
     return this.#toolbar.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
   }
+
+  /**
+   * Touch page swiping. Only for coarse-pointer devices, select mode (hand
+   * mode owns drag-to-pan) and page views that opt in (`swipeNav`) — the
+   * pager arrows are hidden there, so the gesture is the navigation.
+   */
+  #swipeEnabled(): boolean {
+    return (
+      this.#state === "ready" &&
+      this.#mode === "select" &&
+      isCoarsePointer() &&
+      this.#view?.swipeNav === true
+    );
+  }
+
+  #onStagePointerDown = (ev: PointerEvent): void => {
+    if (ev.pointerType !== "touch" || !this.#swipeEnabled()) {
+      return;
+    }
+    if (this.#swipe && this.#swipe.pointerId !== ev.pointerId) {
+      // A second finger means pinch zoom — abandon the pending swipe.
+      this.#swipe = null;
+      return;
+    }
+    this.#swipe = {
+      pointerId: ev.pointerId,
+      startX: ev.clientX,
+      startY: ev.clientY,
+      dx: 0,
+      active: false,
+    };
+  };
+
+  #onStagePointerMove = (ev: PointerEvent): void => {
+    const swipe = this.#swipe;
+    if (!swipe || swipe.pointerId !== ev.pointerId) {
+      return;
+    }
+    const dx = ev.clientX - swipe.startX;
+    const dy = ev.clientY - swipe.startY;
+    if (!swipe.active) {
+      // Commit only to a clearly horizontal drag; vertical intent is a scroll.
+      if (Math.abs(dx) < SWIPE_THRESHOLD / 4 || Math.abs(dx) < Math.abs(dy)) {
+        return;
+      }
+      swipe.active = true;
+    }
+    swipe.dx = dx;
+  };
+
+  #onStagePointerUp = (ev: PointerEvent): void => {
+    const swipe = this.#swipe;
+    if (!swipe || swipe.pointerId !== ev.pointerId) {
+      return;
+    }
+    this.#swipe = null;
+    if (!swipe.active) {
+      return;
+    }
+    if (swipe.dx <= -SWIPE_THRESHOLD) {
+      this.#view?.nextPage();
+    } else if (swipe.dx >= SWIPE_THRESHOLD) {
+      this.#view?.prevPage();
+    }
+  };
+
+  /** An interrupted gesture (system scroll, etc.) navigates nothing. */
+  #onStagePointerCancel = (ev: PointerEvent): void => {
+    if (this.#swipe?.pointerId === ev.pointerId) {
+      this.#swipe = null;
+    }
+  };
 
   /** User close request (Esc / Close button) — Overlay only. */
   requestClose(): void {
@@ -647,7 +747,8 @@ export class Core {
     for (const btn of this.#toolbar.querySelectorAll<HTMLButtonElement>(
       'button[data-flv-pager="true"]',
     )) {
-      btn.hidden = !hasPages;
+      // Touch page views are swipe-navigated, so the arrows step aside.
+      btn.hidden = !hasPages || (view?.swipeNav === true && isCoarsePointer());
     }
     this.#sepPager.hidden = !hasPages;
     const prev = this.#button("Previous page");
@@ -673,10 +774,12 @@ export class Core {
     const isVideo = kind === "video";
     const isMedia = isVideo || kind === "audio";
     const hasPanZoom = isDoc || isVideo;
+    // Pinch replaces the continuous zoom buttons on touch devices.
+    const zoomButtons = isDoc && !isCoarsePointer();
     showBtn("Select mode", hasPanZoom);
     showBtn("Hand mode", hasPanZoom);
-    showBtn("Zoom in", isDoc);
-    showBtn("Zoom out", isDoc);
+    showBtn("Zoom in", zoomButtons);
+    showBtn("Zoom out", zoomButtons);
     showBtn("Fit", isDoc || isVideo);
     showBtn("Actual size", isDoc || isVideo);
     // Rotation is a fixed-page/raster transform — flow kinds don't offer it.
@@ -817,6 +920,7 @@ export class Core {
   #destroyView(): void {
     this.#mediaEl = null;
     this.#scrubbing = false;
+    this.#swipe = null;
     this.#view?.destroy();
     this.#view = null;
     this.#stage.replaceChildren();
@@ -870,6 +974,10 @@ export class Core {
     this.#resizeObserver?.disconnect();
     document.removeEventListener("fullscreenchange", this.#fullscreenChange);
     this.root.removeEventListener("keydown", this.#keydown);
+    this.#stage.removeEventListener("pointerdown", this.#onStagePointerDown);
+    this.#stage.removeEventListener("pointermove", this.#onStagePointerMove);
+    this.#stage.removeEventListener("pointerup", this.#onStagePointerUp);
+    this.#stage.removeEventListener("pointercancel", this.#onStagePointerCancel);
     this.bus.clear();
   }
 }
