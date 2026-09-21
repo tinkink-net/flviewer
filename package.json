@@ -36,6 +36,9 @@
     },
     "./package.json": "./package.json"
   },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  },
   "scripts": {
     "dev": "vp dev",
     "test": "vp test",
@@ -72,8 +75,5 @@
       "onFail": "download"
     }
   },
-  "packageManager": "pnpm@12.4.1",
-  "publishConfig": {
-    "registry": "https://registry.npmjs.org/"
-  }
+  "packageManager": "pnpm@12.4.1"
 }
