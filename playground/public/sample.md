@@ -45,6 +45,25 @@ export function greet(name: string): string {
 }
 ```
 
+## Typography
+
+The rendered prose is a paper card — white page, dark text, light syntax
+palette — matching the PDF/DOCX page metaphor. Inline **bold**, _italic_,
+~~struck~~, `inline code`, a [link](#typography) and a <kbd>Cmd</kbd> key all
+read on the paper surface.
+
+Nested lists keep their markers at every depth:
+
+- Level one
+  - Level two
+    - Level three
+- Back to level one
+
+1. First
+2. Second
+   1. Nested ordered
+   2. Another nested
+
 ## Sanitizer demo
 
 Everything dangerous below must be stripped silently:
