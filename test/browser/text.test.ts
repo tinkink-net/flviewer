@@ -170,6 +170,58 @@ describe("text views (Phase 2)", () => {
     plain.remove();
   });
 
+  it("renders markdown as a paper document on the dark chrome", async () => {
+    const container = document.createElement("div");
+    container.style.cssText = "width:640px;height:420px";
+    document.body.append(container);
+    const md = [
+      "# Paper",
+      "",
+      "- bullet one",
+      "- bullet two",
+      "",
+      "1. first",
+      "2. second",
+      "",
+      "> quoted aside",
+      "",
+      "```ts",
+      "const n: number = 1;",
+      "```",
+    ].join("\n");
+    const controller = mountText(container, textBlob(md, "text/markdown", "doc.md"));
+    await controllerReady(controller);
+    const prose = await waitUntil(() => container.querySelector<HTMLElement>(".flv-prose"));
+
+    // Paper card: white surface, shadow, dark prose — the PDF/Word metaphor.
+    const card = getComputedStyle(prose);
+    expect(card.backgroundColor).toBe("rgb(255, 255, 255)");
+    expect(card.boxShadow).not.toBe("none");
+    expect(card.color).toBe("rgb(31, 41, 55)");
+
+    // Lists keep their markers (host resets must not strip them).
+    expect(getComputedStyle(prose.querySelector("ul")!).listStyleType).toBe("disc");
+    expect(getComputedStyle(prose.querySelector("ol")!).listStyleType).toBe("decimal");
+
+    // Fenced code sits on a light block with the light syntax palette.
+    const pre = prose.querySelector("pre")!;
+    expect(getComputedStyle(pre).backgroundColor).toBe("rgb(243, 244, 246)");
+    expect(getComputedStyle(pre.querySelector(".hljs-keyword")!).color).toBe("rgb(215, 58, 73)");
+
+    // The paper surface is themable through the namespaced custom property.
+    const root = container.querySelector<HTMLElement>(".flv-root")!;
+    root.style.setProperty("--flv-paper", "rgb(255, 251, 235)");
+    expect(getComputedStyle(prose).backgroundColor).toBe("rgb(255, 251, 235)");
+
+    // Source toggle stays the dark code surface — no paper card there.
+    (container.querySelector('button[aria-label="Toggle source"]') as HTMLButtonElement).click();
+    const code = await waitUntil(() => container.querySelector<HTMLPreElement>("pre.flv-code"));
+    expect(container.querySelector(".flv-prose")).toBeNull();
+    expect(getComputedStyle(code).backgroundColor).toBe("rgba(0, 0, 0, 0)");
+    controller.destroy();
+    container.remove();
+  });
+
   it("resolves markdown assets against baseUrl for in-memory sources", async () => {
     const container = document.createElement("div");
     container.style.cssText = "width:400px;height:300px";

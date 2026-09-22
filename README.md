@@ -81,14 +81,25 @@ Interactions: select mode (default) — wheel scrolls the document; hand mode �
 
 ## Theming
 
-Light DOM, `flv-`-namespaced classes. Theme via CSS custom properties:
+Light DOM, `flv-`-namespaced classes. Theme via CSS custom properties, scoped to the
+viewer root (`.flv-root`) so the defaults are actually overridden:
 
 ```css
-:root {
+.flv-root {
   --flv-accent: #6ea8fe;
   --flv-bg: rgba(28, 28, 32, 0.92);
+  /* Paper surface for rendered Markdown (PDF/DOCX-style document page). */
+  --flv-paper: #ffffff;
+  --flv-paper-fg: #1f2937;
+  --flv-paper-muted: #4b5563;
+  --flv-paper-border: rgba(15, 23, 42, 0.14);
+  --flv-paper-code: #f3f4f6;
+  --flv-paper-link: #2563eb;
 }
 ```
+
+Only the rendered Markdown view uses the paper surface — plain text/code/CSV/XML and
+the Markdown source toggle stay on the dark data/chrome surfaces.
 
 ## Development
 

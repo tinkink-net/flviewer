@@ -6,6 +6,14 @@ export const FLV_STYLES = `
   --flv-overlay-bg: rgba(12, 12, 14, 0.9);
   --flv-radius: 10px;
   --flv-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  /* Rendered-document paper surface (ADR-6): rendered Markdown reads as a
+     white page on the dark chrome — the same metaphor as PDF/DOCX pages. */
+  --flv-paper: #ffffff;
+  --flv-paper-fg: #1f2937;
+  --flv-paper-muted: #4b5563;
+  --flv-paper-border: rgba(15, 23, 42, 0.14);
+  --flv-paper-code: #f3f4f6;
+  --flv-paper-link: #2563eb;
   box-sizing: border-box;
   position: relative;
   width: 100%;
@@ -472,18 +480,31 @@ video.flv-media {
   box-shadow: var(--flv-shadow);
   overflow: hidden;
 }
-/* Rendered Markdown prose (ADR-6). */
+/* Rendered Markdown prose (ADR-6): a paper card on the dark chrome — the same
+   document metaphor as PDF pages and DOCX pages, not bare text on a HUD.
+   The card *is* the scroll content: capped, centered and shadowed. Only the
+   rendered view gets paper; the source toggle stays a dark code surface. */
 .flv-prose {
-  max-width: 46rem;
+  width: min(46rem, calc(100% - 32px));
   margin: 0 auto;
-  /* Vertical rhythm comes from the capped content box (24/48) — the prose
-     only adds its inline gutters. */
-  padding: 4px 32px 0;
+  padding: 40px 48px 48px;
+  background: var(--flv-paper);
+  color: var(--flv-paper-fg);
+  border-radius: var(--flv-radius);
+  box-shadow: var(--flv-shadow);
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 15px;
   line-height: 1.65;
-  color: var(--flv-fg);
   overflow-wrap: break-word;
+  /* Form controls (task checkboxes) and scrollbars belong to the paper. */
+  color-scheme: light;
+}
+/* Keep the first/last block flush with the card padding. */
+.flv-prose > :first-child {
+  margin-top: 0;
+}
+.flv-prose > :last-child {
+  margin-bottom: 0;
 }
 .flv-prose h1,
 .flv-prose h2,
@@ -491,20 +512,22 @@ video.flv-media {
 .flv-prose h4,
 .flv-prose h5,
 .flv-prose h6 {
-  margin: 1.4em 0 0.5em;
+  margin: 1.5em 0 0.6em;
   font-weight: 650;
   line-height: 1.25;
+  color: var(--flv-paper-fg);
   scroll-margin-top: 48px;
 }
 .flv-prose h1 {
-  font-size: 1.75em;
-  margin-top: 0.4em;
+  font-size: 1.9em;
 }
 .flv-prose h2 {
-  font-size: 1.4em;
+  font-size: 1.5em;
+  padding-bottom: 0.25em;
+  border-bottom: 1px solid var(--flv-paper-border);
 }
 .flv-prose h3 {
-  font-size: 1.18em;
+  font-size: 1.2em;
 }
 .flv-prose h4,
 .flv-prose h5,
@@ -512,63 +535,135 @@ video.flv-media {
   font-size: 1em;
 }
 .flv-prose p {
-  margin: 0.85em 0;
+  margin: 0.9em 0;
 }
 .flv-prose ul,
 .flv-prose ol {
-  margin: 0.85em 0;
-  padding-left: 1.6em;
+  margin: 0.9em 0;
+  padding-left: 1.5em;
+}
+/* Explicit markers: host resets frequently strip the UA list styles, leaving
+   rendered lists as unmarked text (the bug this pass fixes). */
+.flv-prose ul {
+  list-style: disc;
+}
+.flv-prose ol {
+  list-style: decimal;
+}
+.flv-prose ul ul {
+  list-style: circle;
+}
+.flv-prose ul ul ul {
+  list-style: square;
 }
 .flv-prose li {
-  margin: 0.25em 0;
+  margin: 0.35em 0;
+}
+.flv-prose li::marker {
+  color: var(--flv-paper-muted);
+}
+.flv-prose li > p {
+  margin: 0.35em 0;
+}
+/* GFM task lists: the checkbox takes the bullet's place. */
+.flv-prose li:has(> input[type="checkbox"]) {
+  list-style: none;
+}
+.flv-prose li > input[type="checkbox"] {
+  margin: 0 0.5em 0 0;
+  vertical-align: -0.05em;
+  accent-color: var(--flv-paper-link);
 }
 .flv-prose blockquote {
-  margin: 1em 0;
-  padding: 0.15em 1em;
-  border-left: 3px solid var(--flv-accent);
-  color: rgba(242, 242, 242, 0.75);
+  margin: 1.1em 0;
+  padding: 0.65em 1.1em;
+  border-left: 4px solid var(--flv-paper-link);
+  border-radius: 0 8px 8px 0;
+  background: var(--flv-paper-code);
+  color: var(--flv-paper-muted);
+}
+.flv-prose blockquote > :first-child {
+  margin-top: 0;
+}
+.flv-prose blockquote > :last-child {
+  margin-bottom: 0;
 }
 .flv-prose a {
-  color: var(--flv-accent);
+  color: var(--flv-paper-link);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 .flv-prose a.flv-link-missing {
-  color: rgba(242, 242, 242, 0.55);
+  color: var(--flv-paper-muted);
   text-decoration: none;
   cursor: default;
+}
+.flv-prose strong {
+  font-weight: 650;
+  color: var(--flv-paper-fg);
 }
 .flv-prose code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   font-size: 0.875em;
-  background: rgba(255, 255, 255, 0.09);
-  border-radius: 4px;
-  padding: 0.15em 0.4em;
+  background: var(--flv-paper-code);
+  border: 1px solid var(--flv-paper-border);
+  border-radius: 5px;
+  padding: 0.1em 0.4em;
+  color: var(--flv-paper-fg);
 }
 .flv-prose pre {
-  margin: 1em 0;
-  padding: 12px 16px;
-  background: #17171b;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  margin: 1.1em 0;
+  padding: 14px 16px;
+  background: var(--flv-paper-code);
+  border: 1px solid var(--flv-paper-border);
   border-radius: 8px;
   overflow-x: auto;
-  line-height: 1.55;
+  line-height: 1.6;
   font-size: 13px;
+  scrollbar-width: thin;
 }
 .flv-prose pre code {
   background: transparent;
+  border: 0;
   padding: 0;
   font-size: inherit;
+  color: inherit;
 }
 .flv-prose img {
   max-width: 100%;
   height: auto;
-  border-radius: 6px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.16);
 }
 .flv-prose hr {
   border: 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.18);
-  margin: 1.8em 0;
+  border-top: 1px solid var(--flv-paper-border);
+  margin: 2em 0;
+}
+.flv-prose kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.85em;
+  padding: 0.1em 0.4em;
+  border: 1px solid var(--flv-paper-border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--flv-paper-code);
+}
+.flv-prose mark {
+  background: #fef08a;
+  color: var(--flv-paper-fg);
+  padding: 0 0.2em;
+  border-radius: 3px;
+}
+.flv-prose summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.flv-prose figcaption {
+  margin-top: 0.5em;
+  color: var(--flv-paper-muted);
+  font-size: 0.9em;
+  text-align: center;
 }
 .flv-prose table,
 .flv-table {
@@ -578,19 +673,24 @@ video.flv-media {
   display: block;
   max-width: 100%;
   overflow-x: auto;
-  margin: 1em 0;
+  margin: 1.1em 0;
   border-collapse: collapse;
   font-size: 14px;
 }
 .flv-prose table th,
 .flv-prose table td {
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  padding: 5px 12px;
+  border: 1px solid var(--flv-paper-border);
+  padding: 8px 12px;
   text-align: left;
 }
 .flv-prose table th {
-  background: #26262c;
+  background: var(--flv-paper-code);
   font-weight: 600;
+}
+@media (max-width: 640px) {
+  .flv-prose {
+    padding: 24px 20px 32px;
+  }
 }
 .flv-asset-missing {
   display: inline-flex;
@@ -598,9 +698,9 @@ video.flv-media {
   gap: 7px;
   padding: 7px 12px;
   margin: 4px 0;
-  border: 1px dashed rgba(255, 255, 255, 0.32);
+  border: 1px dashed var(--flv-paper-border);
   border-radius: 6px;
-  color: rgba(242, 242, 242, 0.6);
+  color: var(--flv-paper-muted);
   font-size: 12px;
   vertical-align: middle;
 }
@@ -673,6 +773,61 @@ video.flv-media {
 }
 .hljs-strong {
   font-weight: 600;
+}
+/* Light syntax palette for fenced code inside the paper (the palette above is
+   tuned for the dark code/data surfaces — a light-theme remap scoped to
+   the flv-prose scope keeps prose code legible on white). */
+.flv-prose .hljs-comment,
+.flv-prose .hljs-quote {
+  color: #6a737d;
+  font-style: italic;
+}
+.flv-prose .hljs-keyword,
+.flv-prose .hljs-selector-tag,
+.flv-prose .hljs-doctag {
+  color: #d73a49;
+}
+.flv-prose .hljs-string,
+.flv-prose .hljs-regexp {
+  color: #032f62;
+}
+.flv-prose .hljs-number,
+.flv-prose .hljs-literal,
+.flv-prose .hljs-type,
+.flv-prose .hljs-class .hljs-title,
+.flv-prose .hljs-built_in {
+  color: #005cc5;
+}
+.flv-prose .hljs-title,
+.flv-prose .hljs-function .hljs-title,
+.flv-prose .hljs-title.function_ {
+  color: #6f42c1;
+}
+.flv-prose .hljs-attr,
+.flv-prose .hljs-attribute,
+.flv-prose .hljs-variable,
+.flv-prose .hljs-template-variable,
+.flv-prose .hljs-meta {
+  color: #e36209;
+}
+.flv-prose .hljs-name,
+.flv-prose .hljs-section,
+.flv-prose .hljs-selector-id,
+.flv-prose .hljs-selector-class {
+  color: #22863a;
+}
+.flv-prose .hljs-symbol,
+.flv-prose .hljs-bullet,
+.flv-prose .hljs-link {
+  color: #22863a;
+}
+.flv-prose .hljs-deletion {
+  color: #b31d28;
+  background: #ffeef0;
+}
+.flv-prose .hljs-addition {
+  color: #22863a;
+  background: #f0fff4;
 }
 @media (prefers-reduced-motion: reduce) {
   .flv-root * {
