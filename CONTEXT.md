@@ -61,3 +61,4 @@ JSON, CSV, XML, Markdown-as-rendered-HTML); anything else resolves to a typed er
 - Tooling: vite-plus end-to-end (`vp dev`, `vp test`, `vp check`, `vp pack --dts --publint --attw` as the release gate); dependencies via **pnpm** (`pnpm install`, `pnpm@12.4.1` pinned in `packageManager`). No npm/yarn lockfiles.
 - Minimum browser target: evergreen (required by dynamic `import()`).
 - Verification: Vitest + happy-dom unit tests (logic) + Vitest browser mode / Playwright Chromium smoke tests (real rendering, fixtures for PNG/JPEG/PDF).
+- Preview: `scripts/preview-deploy.sh` publishes the playground to an **anonymous temporary Cloudflare account** (`wrangler deploy --temporary`, 60-minute TTL, no signup, caller's login untouched) — see [docs/preview-deploys.md](docs/preview-deploys.md).

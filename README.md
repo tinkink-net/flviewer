@@ -77,7 +77,7 @@ Error codes: `fetch-error`, `unsupported-type`, `encrypted-pdf`, `encrypted-offi
 ## Controls
 
 Toolbar: zoom in/out · fit · 100% · rotate · page prev/next + indicator / sheet dropdown (PDF, XLSX, PPTX) · download · fullscreen · close (Overlay only).
-Interactions: select mode (default) — wheel scrolls the document; hand mode — drag pans (clamped) and the wheel zooms; double-click 1×↔2×, pinch zoom; keyboard (`Esc`, `+`/`-`, arrows, `0`, `h`/`v`). Text and XLSX views scroll natively.
+Interactions: select mode (default) — wheel scrolls the document; hand mode — drag pans (clamped) and the wheel zooms; double-click 1×↔2×; keyboard (`Esc`, `+`/`-`, arrows, `0`, `h`/`v`). On touch devices pinch zooms in either mode and swipe pages PDF/PPTX — the continuous zoom buttons and pager arrows make way for those gestures. Text and XLSX views scroll natively.
 
 ## Theming
 
@@ -112,6 +112,18 @@ vp test           # unit (happy-dom) + browser (Playwright Chromium)
 vp check          # format + lint + typecheck
 vp pack --dts --publint --attw   # release gate
 ```
+
+### Preview deploy
+
+Hand someone a live build to review — an anonymous Cloudflare Worker with a
+60-minute TTL and no account involved:
+
+```bash
+scripts/preview-deploy.sh          # prints the live URL + claim URL
+```
+
+See [docs/preview-deploys.md](docs/preview-deploys.md) for how the temporary
+account works, the claim window and caveats.
 
 Regenerate test fixtures / the inlined pdf.js worker + assets after dependency changes:
 

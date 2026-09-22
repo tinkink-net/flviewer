@@ -6,7 +6,10 @@ export default defineConfig({
     open: true,
   },
   lint: {
-    ignorePatterns: ["dist/**", "node_modules/**"],
+    // playground/public/* are raw sample assets served to (and previewed by)
+    // the viewer, not part of the TypeScript project (sample.ts imports the
+    // package by name for display only).
+    ignorePatterns: ["dist/**", "node_modules/**", "playground/public/**"],
     options: {
       typeAware: true,
       typeCheck: true,
