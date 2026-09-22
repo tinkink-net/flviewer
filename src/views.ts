@@ -41,6 +41,13 @@ export interface ViewCallbacks {
 export interface FlvView {
   /** Whether the document has pages (PDF) — toggles the pager UI. */
   readonly hasPages: boolean;
+  /**
+   * Whether horizontal swipe navigates pages (touch). The Core owns the
+   * gesture and, on coarse-pointer devices, hides the pager arrows that the
+   * gesture replaces. Kinds with native horizontal scrolling (XLSX) leave
+   * this off so the scroll gesture keeps its meaning.
+   */
+  readonly swipeNav?: boolean;
   readonly pageCount?: number;
   /**
    * Optional custom page indicator element (XLSX sheet dropdown, ADR-7) that
@@ -465,6 +472,7 @@ export async function createPdfView(
     get hasPages() {
       return true;
     },
+    swipeNav: true,
     pageCount: doc.numPages,
     zoomBy: (factor: number) => panzoom.zoomBy(factor),
     fit: () => {

@@ -1,7 +1,24 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mount, open } from "../src/index";
 import { injectFlvStyles } from "../src/stylesheet";
 import { flush, jpgBlob, junkBlob, pngBlob, wavBlob, wavBytes } from "./helpers";
+
+/** Force the coarse-pointer media query either way for a test. */
+function mockCoarsePointer(coarse: boolean): void {
+  vi.spyOn(window, "matchMedia").mockImplementation(
+    (query: string) =>
+      ({
+        matches: coarse && query.includes("pointer: coarse"),
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }) as unknown as MediaQueryList,
+  );
+}
 
 describe("mount (Embed)", () => {
   it("renders toolbar and fires ready for a PNG blob", async () => {
@@ -281,6 +298,58 @@ describe("interaction modes", () => {
     await new Promise((resolve) => controller.on("ready", resolve));
     const stage = container.querySelector(".flv-stage")!;
     expect(stage.classList.contains("flv-mode-hand")).toBe(true);
+    controller.destroy();
+  });
+});
+
+describe("touch control optimization", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("hides the continuous zoom buttons on coarse-pointer devices", async () => {
+    mockCoarsePointer(true);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const controller = mount(container, pngBlob());
+    await new Promise((resolve) => controller.on("ready", resolve));
+    const root = container.querySelector(".flv-root")!;
+    // Pinch replaces +/- zoom.
+    expect((root.querySelector('button[aria-label="Zoom in"]') as HTMLElement).hidden).toBe(true);
+    expect((root.querySelector('button[aria-label="Zoom out"]') as HTMLElement).hidden).toBe(true);
+    // Presets and rotate are not continuous-zoom gestures — they stay.
+    expect((root.querySelector('button[aria-label="Fit"]') as HTMLElement).hidden).toBe(false);
+    expect((root.querySelector('button[aria-label="Actual size"]') as HTMLElement).hidden).toBe(
+      false,
+    );
+    expect((root.querySelector('button[aria-label="Rotate"]') as HTMLElement).hidden).toBe(false);
+    controller.destroy();
+  });
+
+  it("keeps the zoom buttons on fine-pointer devices", async () => {
+    mockCoarsePointer(false);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const controller = mount(container, pngBlob());
+    await new Promise((resolve) => controller.on("ready", resolve));
+    const root = container.querySelector(".flv-root")!;
+    expect((root.querySelector('button[aria-label="Zoom in"]') as HTMLElement).hidden).toBe(false);
+    expect((root.querySelector('button[aria-label="Zoom out"]') as HTMLElement).hidden).toBe(false);
+    controller.destroy();
+  });
+
+  it("keeps video fit/100% on coarse pointers (pinch is disabled for video)", async () => {
+    mockCoarsePointer(true);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const file = new File([wavBytes()], "clip.mp4", { type: "" });
+    const controller = mount(container, file);
+    await new Promise((resolve) => controller.on("ready", resolve));
+    const root = container.querySelector(".flv-root")!;
+    expect((root.querySelector('button[aria-label="Fit"]') as HTMLElement).hidden).toBe(false);
+    expect((root.querySelector('button[aria-label="Actual size"]') as HTMLElement).hidden).toBe(
+      false,
+    );
     controller.destroy();
   });
 });

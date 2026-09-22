@@ -92,6 +92,7 @@ export async function createPptxView(
 
   return {
     hasPages: true,
+    swipeNav: true,
     pageCount: count,
     zoomBy: (factor: number) => panzoom.zoomBy(factor),
     fit: () => panzoom.fit(),

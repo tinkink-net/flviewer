@@ -81,10 +81,15 @@ export class PanZoom {
     }
 
     const onPointerDown = (ev: PointerEvent) => {
-      if (this.#mode === "select") {
+      if (ev.pointerType === "mouse" && ev.button !== 0) {
         return;
       }
-      if (ev.pointerType === "mouse" && ev.button !== 0) {
+      // Select mode is for reading/selecting: mouse pointers stay untouched so
+      // native text selection keeps working (office kinds). Touch pointers are
+      // still tracked so two-finger pinch zoom works in select mode — the drag
+      // branch below stays gated to hand mode, so single-finger still never
+      // pans there.
+      if (this.#mode === "select" && ev.pointerType === "mouse") {
         return;
       }
       this.#pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
@@ -102,7 +107,7 @@ export class PanZoom {
       } catch {
         // Pointer already gone (released between events).
       }
-      if (this.#scale > 1.001) {
+      if (this.#mode === "hand" && this.#scale > 1.001) {
         stage.classList.add("flv-panning");
       }
     };
@@ -127,7 +132,7 @@ export class PanZoom {
         }
         return;
       }
-      if (this.#pointers.size === 1 && this.#opts.drag) {
+      if (this.#pointers.size === 1 && this.#opts.drag && this.#mode === "hand") {
         this.#tx += ev.clientX - prev.x;
         this.#ty += ev.clientY - prev.y;
         this.#apply();
