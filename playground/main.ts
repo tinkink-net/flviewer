@@ -108,6 +108,11 @@ document.addEventListener("click", async (ev) => {
     case "open-url":
       open(new URL(pngUrl, location.href));
       break;
+    case "open-remote":
+      // Remote image for on-device WeChat checks: flviewer keeps the original
+      // URL in the <img>, so WeChat's native save/forward menu can use it.
+      open("https://picsum.photos/seed/flviewer/1200/800", { title: "remote.jpg" });
+      break;
     case "open-broken":
       // Invalid UTF-8 with no known magic — genuinely unsupported.
       open(

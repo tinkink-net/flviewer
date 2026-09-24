@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mount } from "../../src/index";
+import { createImageView } from "../../src/views";
 import { pngBytes, pngBlob } from "../helpers";
 
 async function waitUntil<T>(fn: () => T | undefined | null, timeout = 5000): Promise<T> {
@@ -126,5 +127,44 @@ describe("image view native affordances (issue #15)", () => {
     const bytes = new Uint8Array(await (await fetch(anchor.href)).arrayBuffer());
     // Byte-identical to the source file — no rendering, no viewer chrome.
     expect(bytes).toEqual(pngBytes());
+  });
+});
+
+describe("image src selection (issue #15)", () => {
+  const callbacks = {
+    wheelMode: "always" as const,
+    mode: "select" as const,
+    onZoom: () => {},
+    onError: () => {},
+  };
+
+  it("uses the original URL when the source has one", () => {
+    const stage = document.createElement("div");
+    document.body.append(stage);
+    const view = createImageView(
+      stage,
+      { kind: "image", name: "x.png", url: "https://example.test/x.png", blob: pngBlob() } as never,
+      callbacks,
+    );
+    const img = stage.querySelector<HTMLImageElement>("img.flv-img")!;
+    // Original URL first — the only form WeChat's native menu can save, and
+    // the cheapest form everywhere else.
+    expect(img.getAttribute("src")).toBe("https://example.test/x.png");
+    view.destroy();
+    stage.remove();
+  });
+
+  it("falls back to a blob URL for in-memory sources in a normal browser", () => {
+    const stage = document.createElement("div");
+    document.body.append(stage);
+    const view = createImageView(
+      stage,
+      { kind: "image", name: "x.png", blob: pngBlob() } as never,
+      callbacks,
+    );
+    const img = stage.querySelector<HTMLImageElement>("img.flv-img")!;
+    expect(img.src.startsWith("blob:")).toBe(true);
+    view.destroy();
+    stage.remove();
   });
 });

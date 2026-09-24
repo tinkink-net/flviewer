@@ -95,28 +95,105 @@ function stageFit(
 
 const RENDER_MARGIN = 24;
 
+/**
+ * WeChat / Weixin WebView detection. Its native long-press image menu
+ * (*Save image* / *Forward*) only understands `http(s)` and `data:` image
+ * URLs — never `blob:` object URLs (device-verified on Android WeChat, #15).
+ * The viewer therefore swaps its in-memory object URL for an inline data: URL
+ * there; other browsers are untouched.
+ */
+export function isWeChatWebView(): boolean {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+  return /MicroMessenger|wxwork/i.test(navigator.userAgent);
+}
+
+/** Inline a blob as a data: URL — the WeChat-savable form for in-memory sources. */
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+      } else {
+        reject(new Error("The image could not be inlined."));
+      }
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("The image could not be inlined."));
+    reader.readAsDataURL(blob);
+  });
+}
+
 export function createImageView(
   stage: HTMLElement,
   loaded: LoadedSource,
   cb: ViewCallbacks,
 ): FlvView {
-  if (!loaded.blob) {
+  if (!loaded.blob && !loaded.url) {
     // Unreachable via the detection chain (only media kinds stream), but
     // guarded so the view contract stays total.
     throw createFlvError("render-error", "The image payload is missing.");
   }
-  const objectUrl = URL.createObjectURL(loaded.blob);
   const img = document.createElement("img");
   img.className = "flv-media flv-img";
   img.alt = loaded.name ?? "Image preview";
   img.draggable = false;
-  img.src = objectUrl;
 
   const panzoom = new PanZoom(stage, img, {
     wheelMode: cb.wheelMode,
     mode: cb.mode,
     onZoom: cb.onZoom,
   });
+
+  let objectUrl: string | null = null;
+  let usingUrl = false;
+
+  /** The original URL — cheapest, and the only form WeChat can save. */
+  const useOriginalUrl = (): boolean => {
+    if (!loaded.url) {
+      return false;
+    }
+    usingUrl = true;
+    img.src = loaded.url;
+    return true;
+  };
+  const useBlobUrl = (): boolean => {
+    if (!loaded.blob) {
+      return false;
+    }
+    objectUrl = URL.createObjectURL(loaded.blob);
+    img.src = objectUrl;
+    return true;
+  };
+  /** Inline the fetched bytes as a data: URL (no object URL to revoke). */
+  const useDataUrl = (): boolean => {
+    if (!loaded.blob) {
+      return false;
+    }
+    void blobToDataUrl(loaded.blob)
+      .then((dataUrl) => {
+        img.src = dataUrl;
+      })
+      .catch((err) => {
+        cb.onError(
+          createFlvError("render-error", "The image could not be decoded by the browser.", err),
+        );
+      });
+    return true;
+  };
+  /**
+   * In-memory fallback for sources without a URL. WeChat's native long-press
+   * menu cannot use a blob: URL, so it gets an inline data: URL; every other
+   * browser keeps the blob URL it has always used.
+   */
+  const useInMemory = (): boolean => (isWeChatWebView() ? useDataUrl() : useBlobUrl());
+
+  // Original URL first (issue #15). Only sources with no URL fall back to an
+  // object URL — except in WeChat, which gets a data: URL instead.
+  if (!useOriginalUrl()) {
+    useInMemory();
+  }
 
   const onLoad = () => {
     if (img.naturalWidth > 0) {
@@ -125,6 +202,14 @@ export function createImageView(
     }
   };
   const onImgError = () => {
+    // The original URL can still fail to render (auth, hotlinking). Fall back
+    // to the in-memory form before giving up.
+    if (usingUrl) {
+      usingUrl = false;
+      if (useInMemory()) {
+        return;
+      }
+    }
     cb.onError(createFlvError("render-error", "The image could not be decoded by the browser."));
   };
   img.addEventListener("load", onLoad);
@@ -150,7 +235,9 @@ export function createImageView(
     destroy: () => {
       panzoom.destroy();
       img.remove();
-      URL.revokeObjectURL(objectUrl);
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
     },
   };
 }
