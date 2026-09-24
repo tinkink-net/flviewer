@@ -79,6 +79,16 @@ img.flv-media {
   max-height: none !important;
   box-shadow: var(--flv-shadow);
 }
+/* Images are real <img> elements and keep their native touch affordances
+   (issue #15): long-press has to surface the browser's save/copy/share sheet.
+   The user-select: none above suppresses that callout on iOS, so select
+   mode — the reading mode, and the default — restores it; hand mode keeps it
+   off so a drag-pan never starts a selection (same rule as office kinds). */
+.flv-stage.flv-mode-select img.flv-media {
+  user-select: auto;
+  -webkit-user-select: auto;
+  -webkit-touch-callout: default;
+}
 canvas.flv-media {
   box-shadow: var(--flv-shadow);
 }

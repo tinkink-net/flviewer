@@ -102,10 +102,19 @@ export class PanZoom {
           };
         }
       }
-      try {
-        stage.setPointerCapture(ev.pointerId);
-      } catch {
-        // Pointer already gone (released between events).
+      // Touch/pen pointers already carry the spec's implicit capture (they
+      // capture to the pointerdown target — usually the media element) and
+      // still bubble to the stage listeners. Re-capturing them onto the stage
+      // retargets the native long-press/context menu away from an `<img>`,
+      // which kills "Save image" / "Copy image" on mobile (issue #15). Only a
+      // mouse has no implicit capture, so it is captured explicitly — a drag
+      // must keep tracking when the cursor leaves the stage.
+      if (ev.pointerType === "mouse") {
+        try {
+          stage.setPointerCapture(ev.pointerId);
+        } catch {
+          // Pointer already gone (released between events).
+        }
       }
       if (this.#mode === "hand" && this.#scale > 1.001) {
         stage.classList.add("flv-panning");

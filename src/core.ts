@@ -121,6 +121,13 @@ type CoreState = "idle" | "loading" | "ready" | "error";
 const SWIPE_THRESHOLD = 48;
 
 /**
+ * Grace period before the download anchor is removed and its blob URL
+ * revoked. Removing/revoking too early can abort an in-flight download
+ * (truncated or missing file), so teardown waits well past start-up.
+ */
+const DOWNLOAD_TEARDOWN_MS = 60_000;
+
+/**
  * Primary pointer is coarse (phone/tablet). Pinch and swipe replace the
  * on-screen controls there; a hybrid laptop reports a fine primary pointer,
  * so its buttons stay put.
@@ -935,12 +942,15 @@ export class Core {
       return;
     }
     const a = document.createElement("a");
+    let objectUrl: string | null = null;
     if (loaded.blob) {
-      const url = URL.createObjectURL(loaded.blob);
-      a.href = url;
+      // The download is always the original file bytes — never anything the
+      // viewer rendered (canvas, transforms, chrome) — so what lands on disk
+      // is exactly the source file (issue #15).
+      objectUrl = URL.createObjectURL(loaded.blob);
+      a.href = objectUrl;
       // Note: for cross-origin streaming URLs the download attribute is
       // ignored by browsers and the media opens instead — acceptable for v1.
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
     } else if (loaded.url) {
       a.href = loaded.url;
     } else {
@@ -949,7 +959,15 @@ export class Core {
     a.download = suggestFilename(loaded);
     document.body.append(a);
     a.click();
-    a.remove();
+    // Teardown must not race the download: removing the anchor synchronously
+    // and revoking the blob URL on a short timer aborts an in-flight download
+    // in some browsers, leaving a truncated or missing file (issue #15).
+    setTimeout(() => {
+      a.remove();
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    }, DOWNLOAD_TEARDOWN_MS);
   }
 
   toggleFullscreen(): void {
