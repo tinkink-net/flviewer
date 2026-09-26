@@ -1,6 +1,6 @@
 {
   "name": "flviewer",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Pure client-side file preview for the browser: images, PDF, video/audio, text family and office documents (DOCX/XLSX/PPTX) with built-in minimal UI.",
   "keywords": [
     "audio",
