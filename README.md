@@ -5,6 +5,7 @@ Pure client-side file preview for the browser. Images, PDF, video & audio, the t
 - **Zero framework dependencies** — vanilla factory API plus a `<fl-viewer>` web component
 - **Overlay & Embed** — fullscreen modal via `open()`, or render inside any container via `mount()`
 - **Streaming media** — video/audio URL sources play directly from the URL (Range-request seeking, no full download)
+- **Native images** — images render as a real `<img>`, never a `<canvas>`, with `src` preferring the original URL; in-memory sources (File/Blob/ArrayBuffer) inline a `data:` URL inside WeChat/Weixin, whose long-press _Save image_ / _Forward_ menu rejects `blob:`. `Download` always ships the original bytes under the original filename
 - **Lazy engines per format** — image and text previews never download heavy engines: pdf.js (~157 KB gz engine + ~356 KB gz worker), the text pipeline (~86 KB gz), docx-preview (~25 KB gz + shared jszip ~31 KB gz), SheetJS (~171 KB gz) and the pptx renderer (~477 KB gz, incl. echarts for charts) each load only on first use of their format. No consumer configuration required, works in bundled apps, CDN-direct and raw-ESM contexts
 - **Typed errors** — failures resolve to `{ code, message, cause? }` events, never exceptions
 
@@ -77,7 +78,7 @@ Error codes: `fetch-error`, `unsupported-type`, `encrypted-pdf`, `encrypted-offi
 ## Controls
 
 Toolbar: zoom in/out · fit · 100% · rotate · page prev/next + indicator / sheet dropdown (PDF, XLSX, PPTX) · download · fullscreen · close (Overlay only).
-Interactions: select mode (default) — wheel scrolls the document; hand mode — drag pans (clamped) and the wheel zooms; double-click 1×↔2×; keyboard (`Esc`, `+`/`-`, arrows, `0`, `h`/`v`). On touch devices pinch zooms in either mode and swipe pages PDF/PPTX — the continuous zoom buttons and pager arrows make way for those gestures. Text and XLSX views scroll natively.
+Interactions: select mode (default) — wheel scrolls the document; hand mode — drag pans (clamped) and the wheel zooms; double-click 1×↔2×; keyboard (`Esc`, `+`/`-`, arrows, `0`, `h`/`v`). On touch devices pinch zooms in either mode and swipe pages PDF/PPTX — the continuous zoom buttons and pager arrows make way for those gestures. Text and XLSX views scroll natively. Images keep their native affordances: select mode leaves long-press to the browser's save/copy/share sheet, while hand mode suppresses selection so drag-pans stay clean.
 
 ## Theming
 
